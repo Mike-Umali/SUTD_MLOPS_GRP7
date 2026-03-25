@@ -8,7 +8,7 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
 
 ```
                         ┌─────────────────────────────────────┐
-                        │           PART 1: DATA PIPELINE      │
+                        │           PART 1: DATA PIPELINE     │
                         └─────────────────────────────────────┘
 
   eLitigation (SUPCT)
@@ -33,7 +33,7 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
 
 
                         ┌─────────────────────────────────────┐
-                        │       PART 2: AGENTIC RAG PIPELINE   │
+                        │       PART 2: AGENTIC RAG PIPELINE  │
                         └─────────────────────────────────────┘
 
   dataset.csv + cases/
@@ -49,9 +49,9 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
          │
          ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │                    MANAGER AGENT (Claude)                     │
-  │  Analyses query, selects relevant expert domains via tool_use │
-  │  Always routes to: Sentencing + Criminal Procedure            │
+  │                    MANAGER AGENT (Claude)                    │
+  │  Analyses query, selects relevant expert domains via tool_use│
+  │  Always routes to: Sentencing + Criminal Procedure           │
   └──────────────┬───────────────────────────────────────────────┘
                  │  dispatches to (in parallel)
         ┌────────┼──────────────────────────────┐
@@ -65,9 +65,9 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
                         │
                         ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │                      QA AGENT (Claude)                        │
-  │  Synthesises all expert findings into a structured advisory   │
-  │  Written in Singapore High Court judgment style               │
+  │                      QA AGENT (Claude)                       │
+  │  Synthesises all expert findings into a structured advisory  │
+  │  Written in Singapore High Court judgment style              │
   └──────────────────────────────────────────────────────────────┘
                         │
                         ▼
@@ -76,8 +76,8 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
                         │
                         ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │                   STREAMLIT WEB APP (app.py)                  │
-  │  Interactive UI — live pipeline status, tabbed results        │
+  │                   STREAMLIT WEB APP (app.py)                 │
+  │  Interactive UI — live pipeline status, tabbed results       │
   └──────────────────────────────────────────────────────────────┘
 ```
 
