@@ -69,7 +69,7 @@ Produce the final legal advisory note."""
 
     response = client.messages.create(
         model=MODEL,
-        max_tokens=2048,
+        max_tokens=8096,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )

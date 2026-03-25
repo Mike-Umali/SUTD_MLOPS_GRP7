@@ -134,7 +134,7 @@ Provide your expert analysis. If this query is not within your domain, state tha
 
     response = client.messages.create(
         model=MODEL,
-        max_tokens=1024,
+        max_tokens=2048,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
