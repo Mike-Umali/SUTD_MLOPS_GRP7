@@ -45,7 +45,7 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
   index.py  ──── ONNXMiniLM_L6_V2 embeddings → ChromaDB (8 collections)
          │
          ▼
-  User Query
+  User Query (CLI or Streamlit)
          │
          ▼
   ┌──────────────────────────────────────────────────────────────┐
@@ -73,6 +73,12 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
                         ▼
   Final Advisory: Classification | Legal Issues | Applicable Law |
                   Analysis | Next Steps | Cases Referenced
+                        │
+                        ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │                   STREAMLIT WEB APP (app.py)                  │
+  │  Interactive UI — live pipeline status, tabbed results        │
+  └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -133,7 +139,7 @@ A handcrafted Singapore criminal law taxonomy with **~280 entries**.
 | `topic` | Classified topic (e.g. `Statutory offences`) |
 | `subtopic` | Classified subtopic (e.g. `Misuse of Drugs Act`) |
 | `primary_statute` | Primary statute (e.g. `Misuse of Drugs Act s 5`) |
-| `is_criminal` | Boolean — whether case is criminal |
+| `is_criminal` | Boolean — whether row was classified as criminal |
 | `taxonomy_key` | Matched taxonomy key (blank if unmatched) |
 | `pdf_url` | URL to the judgment PDF |
 
@@ -147,47 +153,130 @@ A handcrafted Singapore criminal law taxonomy with **~280 entries**.
 | 38 null citations | Filled from filename |
 | 21.5% taxonomy mismatch → 1.7% | Added ~100 missing taxonomy entries |
 
-### 1.4 EDA Summary
+---
 
-**Case distribution by year:**
+### 1.4 EDA — Label Distribution & Initial Analysis
 
-| Year | Cases |
+#### Dataset overview
+
+| Metric | Value |
 |---|---|
-| 2020 | 21 |
-| 2021 | 100 |
-| 2022 | 95 |
-| 2023 | 93 |
-| 2024 | 90 |
-| 2025 | 80 |
-| 2026 | 21 |
+| Total rows | 1,029 |
+| Unique cases | 500 |
+| Avg catchwords per case | 2.06 |
+| Max catchwords per case | 11 |
+| Taxonomy match rate | 98.3% |
+| Null subtopic | 5 rows |
+| Null primary_statute | 17 rows |
 
-**Top areas of law:**
+#### Court breakdown (unique cases)
 
-| Area | Rows |
-|---|---|
-| Criminal Law | 635 |
-| Criminal Procedure | 258 |
-| Constitutional Law | 37 |
-| Evidence | 23 |
+| Court | Cases | Description |
+|---|---|---|
+| SGHC | 331 (66.2%) | High Court (General Division) |
+| SGCA | 143 (28.6%) | Court of Appeal |
+| SGHCF | 4 (0.8%) | High Court (Family Division) |
+| Unknown | 22 (4.4%) | Citation format varies |
 
-**Top topics:**
+#### Cases by year
 
-| Topic | Count |
-|---|---|
-| Sentencing | 253 |
-| Statutory offences | 177 |
-| Sexual offences | 77 |
-| Offences against person | 29 |
+| Year | Unique Cases | Catchword Rows |
+|---|---|---|
+| 2020 | 21 | 44 |
+| 2021 | 99 | 185 |
+| 2022 | 91 | 163 |
+| 2023 | 84 | 188 |
+| 2024 | 85 | 176 |
+| 2025 | 77 | 168 |
+| 2026 | 21 | 64 |
 
-**Top subtopics:**
+> 2020 and 2026 are partial years in the dataset (scraper captured up to March 2026).
 
-| Subtopic | Count |
-|---|---|
-| Misuse of Drugs Act | 102 |
-| Sentencing principles | 56 |
-| Appeals against sentence | 47 |
-| General sexual offences | 38 |
-| Murder | 17 |
+#### Area of law distribution (rows)
+
+| Area of Law | Rows | % |
+|---|---|---|
+| Criminal Law | 648 | 63.1% |
+| Criminal Procedure | 279 | 27.1% |
+| Constitutional Law | 40 | 3.9% |
+| Evidence | 23 | 2.2% |
+| Statutory Interpretation | 12 | 1.2% |
+| Administrative Law | 5 | 0.5% |
+| Civil Procedure | 5 | 0.5% |
+| Other | 17 | 1.7% |
+
+#### Topic distribution (top 10)
+
+| Topic | Rows | % |
+|---|---|---|
+| Sentencing | 253 | 24.6% |
+| Statutory offences | 202 | 19.6% |
+| General | 121 | 11.8% |
+| Sexual offences | 83 | 8.1% |
+| Offences against person | 39 | 3.8% |
+| Review | 33 | 3.2% |
+| Appeals | 30 | 2.9% |
+| Statements | 24 | 2.3% |
+| General exceptions / Defences | 21 | 2.0% |
+| Property offences | 17 | 1.7% |
+
+> **Sentencing** is the single largest topic (24.6%), reflecting that a large proportion of criminal appeals in Singapore turn on sentencing rather than conviction.
+
+#### Subtopic distribution (top 15)
+
+| Subtopic | Rows | % |
+|---|---|---|
+| General | 306 | 29.7% |
+| Misuse of Drugs Act | 102 | 9.9% |
+| Sentencing principles | 56 | 5.4% |
+| Appeals against sentence | 47 | 4.6% |
+| General sexual offences | 38 | 3.7% |
+| Criminal review | 33 | 3.2% |
+| Criminal appeal | 29 | 2.8% |
+| Rape | 24 | 2.3% |
+| Murder | 17 | 1.7% |
+| Criminal reference | 17 | 1.7% |
+| Property offence | 15 | 1.5% |
+| Penal Code | 14 | 1.4% |
+| Stay of execution | 14 | 1.4% |
+| Prevention of Corruption Act | 13 | 1.3% |
+| Outrage of modesty | 12 | 1.2% |
+
+#### Primary statute distribution (top 10)
+
+| Primary Statute | Rows | % |
+|---|---|---|
+| Criminal Procedure Code 2010 | 424 | 41.2% |
+| Misuse of Drugs Act | 102 | 9.9% |
+| Penal Code | 54 | 5.2% |
+| Penal Code Pt XI (Sexual offences) | 38 | 3.7% |
+| Criminal Procedure Code 2010 s 394H (Review) | 33 | 3.2% |
+| Penal Code s 375 (Rape) | 24 | 2.3% |
+| Evidence Act | 22 | 2.1% |
+| Criminal Procedure Code 2010 s 397 (Reference) | 17 | 1.7% |
+| Penal Code s 300 (Murder) | 17 | 1.7% |
+| Prevention of Corruption Act | 14 | 1.4% |
+
+#### is_criminal label distribution
+
+| Label | Rows | Unique Cases |
+|---|---|---|
+| True (criminal) | 927 (90.1%) | 479 (95.8%) |
+| False (non-criminal catchword) | 102 (9.9%) | 21 (4.2%) |
+
+> Cases with `is_criminal=False` rows are mixed criminal/civil matters (e.g. constitutional challenges arising out of criminal proceedings, civil procedure questions in criminal appeals). The case itself is criminal — the individual catchword touches a non-criminal area.
+
+#### Key observations
+
+1. **Sentencing dominates** — 24.6% of all catchwords relate to sentencing. Singapore's criminal appellate practice heavily focuses on sentence calibration rather than conviction challenges.
+
+2. **MDA is the top specific statute** — Misuse of Drugs Act cases make up ~10% of all catchwords, driven by Singapore's mandatory death penalty jurisprudence and the large volume of trafficking cases.
+
+3. **Court of Appeal vs High Court split** — 28.6% of cases are Court of Appeal decisions, which tend to be high-value precedent-setting judgments on sentencing frameworks and legal principles.
+
+4. **Sexual offences are well-represented** — 8.1% of rows, driven by evolving sentencing band frameworks (Pram Nair, GBR) that generate significant appellate activity.
+
+5. **Taxonomy coverage** — After expanding the taxonomy from ~180 to ~280 entries and fixing case-insensitive matching, unmatched catchwords dropped from 21.5% to **1.7%** (17 rows out of 1,029).
 
 ---
 
@@ -250,7 +339,7 @@ python main.py --index
 Orchestrates the expert agents using Claude's native `tool_use`.
 
 - Receives the user query and selects which expert domains to consult
-- Each expert domain is registered as a Claude tool (`call_<domain>_expert`)
+- Each expert domain is registered as a Claude tool (`consult_<domain>`)
 - Always routes to `sentencing` and `criminal_procedure` for any criminal query
 - Runs an agentic loop until `stop_reason == "end_turn"` (all experts consulted)
 - Returns `expert_results` list with each expert's findings and citations
@@ -261,7 +350,7 @@ Seven specialist expert agents, one per domain.
 
 Each expert agent:
 1. Retrieves the top-5 most relevant chunks from its ChromaDB collection
-2. Calls Claude with a domain-specific system prompt (e.g. "You are a Singapore criminal law expert specialising in drug offences under the MDA...")
+2. Calls Claude with a domain-specific system prompt
 3. Analyses the retrieved case law and returns structured findings + citations
 
 **Expert profiles:**
@@ -304,7 +393,37 @@ All case citations referenced in the analysis.
 
 ---
 
-## Usage
+## Part 3: Streamlit Web App (`app.py`)
+
+An interactive web interface for the full agentic pipeline.
+
+### Features
+
+- **API key input** in the sidebar (or set via `ANTHROPIC_API_KEY` env var)
+- **Live pipeline status** — `st.status` shows each step as it runs (Manager routing → QA synthesis)
+- **Case classification** and **experts consulted** displayed at a glance
+- **Two result tabs:**
+  - **Final Advisory** — full structured advisory with citations grid
+  - **Expert Findings** — expandable per-expert analysis showing chunks retrieved and case citations
+- **Session state** — results persist on re-interaction without re-running the pipeline
+
+### Run the app
+
+```bash
+streamlit run app.py
+```
+
+Or with the API key pre-set:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... streamlit run app.py
+```
+
+Opens at **http://localhost:8501**.
+
+---
+
+## Usage (CLI)
 
 ### Build the index (run once after scraping)
 ```bash
@@ -335,7 +454,8 @@ MLOPSproj/
 ├── scraper.py              # eLitigation scraper (500 criminal cases)
 ├── taxonomy.py             # Singapore criminal law taxonomy (~280 entries)
 ├── dataset.csv             # Labeled dataset (500 cases, 1,029 rows)
-├── main.py                 # Entry point for the agentic pipeline
+├── main.py                 # CLI entry point for the agentic pipeline
+├── app.py                  # Streamlit web app
 ├── pipeline/
 │   ├── extract.py          # PDF text extraction + chunking
 │   ├── index.py            # ChromaDB vector index + retrieval
@@ -358,11 +478,12 @@ pandas
 pdfplumber
 chromadb
 anthropic
+streamlit
 ```
 
 Install:
 ```bash
-pip install requests beautifulsoup4 pandas pdfplumber chromadb anthropic
+pip install requests beautifulsoup4 pandas pdfplumber chromadb anthropic streamlit
 ```
 
 > **Note:** `chromadb`'s built-in `ONNXMiniLM_L6_V2` embedding function is used instead of `sentence-transformers` to avoid PyTorch version conflicts. No GPU required.
