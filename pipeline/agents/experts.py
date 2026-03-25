@@ -1,0 +1,150 @@
+"""
+Expert agents — each specializes in one criminal law domain.
+Each agent: retrieves relevant cases from ChromaDB, then analyzes with Claude.
+"""
+
+import anthropic
+from pipeline.index import retrieve
+
+MODEL = "claude-sonnet-4-6"
+
+EXPERT_PROFILES = {
+    "drug_offences": {
+        "name": "Drug Offences Expert",
+        "expertise": (
+            "Misuse of Drugs Act (MDA) offences including drug trafficking, possession, "
+            "consumption, importation, and exportation. Enhanced trafficking provisions "
+            "(s 33B MDA), mandatory death penalty, certificate of substantive assistance, "
+            "and relevant sentencing benchmarks under MDA."
+        ),
+    },
+    "sexual_offences": {
+        "name": "Sexual Offences Expert",
+        "expertise": (
+            "Sexual offences under the Penal Code including rape (s 375), sexual assault "
+            "by penetration (s 376), outrage of modesty (ss 354, 354A), voyeurism (s 377BB), "
+            "distribution of intimate images (s 377BC), sexual exploitation of minors, "
+            "and unnatural offences. Sentencing frameworks for sexual violence."
+        ),
+    },
+    "violent_crimes": {
+        "name": "Violent Crimes Expert",
+        "expertise": (
+            "Offences against the person including murder (s 300), culpable homicide (s 299), "
+            "voluntarily causing hurt and grievous hurt (ss 321-322), assault, wrongful "
+            "confinement, kidnapping, criminal intimidation, and attempted murder. "
+            "Defences including private defence, diminished responsibility, and provocation."
+        ),
+    },
+    "property_financial": {
+        "name": "Property and Financial Crimes Expert",
+        "expertise": (
+            "Property offences (theft, robbery, CBT, cheating, house-breaking, extortion, mischief), "
+            "forgery and fraud offences, corruption under the Prevention of Corruption Act, "
+            "money laundering under the CDSA, and securities/financial market offences. "
+            "Elements of dishonesty, criminal intention, and causation in financial crimes."
+        ),
+    },
+    "sentencing": {
+        "name": "Sentencing Expert",
+        "expertise": (
+            "Sentencing principles and frameworks under the Criminal Procedure Code 2010. "
+            "Benchmark sentences, sentencing bands, mandatory minimums, mitigating and "
+            "aggravating factors, totality principle, consecutive vs concurrent sentences, "
+            "community-based sentencing, reformative training, probation, caning, "
+            "deterrence, rehabilitation, retribution, and prevention."
+        ),
+    },
+    "criminal_procedure": {
+        "name": "Criminal Procedure Expert",
+        "expertise": (
+            "Criminal Procedure Code 2010: arrest, bail, charge framing, trial procedure, "
+            "admissibility of statements and confessions, acquittal without defence, "
+            "criminal appeals, criminal review (s 394H), criminal reference (s 397), "
+            "criminal revision (s 400), mutual legal assistance, extradition, and "
+            "confiscation of benefits under CDSA."
+        ),
+    },
+    "regulatory": {
+        "name": "Regulatory Offences Expert",
+        "expertise": (
+            "Regulatory and statutory offences including Road Traffic Act (dangerous driving, "
+            "drink driving, careless driving), Immigration Act, Workplace Safety and Health Act, "
+            "Computer Misuse Act, Arms Offences Act, Customs Act, Wildlife Act, Companies Act, "
+            "Payment Services Act, Remote Gambling Act, and other regulatory statutes."
+        ),
+    },
+}
+
+
+def _format_retrieved_cases(chunks: list[dict]) -> str:
+    """Format retrieved case chunks into a readable context block."""
+    if not chunks:
+        return "No relevant cases retrieved."
+    parts = []
+    seen_citations = set()
+    for chunk in chunks:
+        citation = chunk.get("citation", "Unknown")
+        if citation not in seen_citations:
+            seen_citations.add(citation)
+            parts.append(f"[{citation}] — {chunk.get('subtopic', '')} | {chunk.get('primary_statute', '')}")
+        parts.append(chunk["text"])
+        parts.append("---")
+    return "\n".join(parts)
+
+
+def run_expert_agent(
+    domain: str,
+    query: str,
+    client: anthropic.Anthropic,
+    n_results: int = 5,
+) -> dict:
+    """
+    Run a single expert agent:
+    1. Retrieve relevant cases from ChromaDB for this domain
+    2. Analyze with Claude using domain expertise
+    3. Return structured findings
+    """
+    profile = EXPERT_PROFILES.get(domain)
+    if not profile:
+        return {"domain": domain, "findings": "Unknown domain.", "citations": []}
+
+    chunks = retrieve(query, domain, n_results)
+    case_context = _format_retrieved_cases(chunks)
+    citations = list({c["citation"] for c in chunks if c.get("citation")})
+
+    system_prompt = f"""You are the {profile['name']} in a Singapore criminal law advisory panel.
+
+Your expertise covers: {profile['expertise']}
+
+You have been given a legal query and retrieved relevant Singapore case law. Your role is to:
+1. Analyse whether this query falls within your area of expertise
+2. If relevant, extract the key legal principles, applicable statutes, and sentencing precedents
+3. Identify what elements must be proven and any available defences
+4. Provide a concise expert opinion referencing the retrieved cases
+
+Be precise and cite specific cases and statutory provisions. If the query does not fall within your expertise, say so briefly."""
+
+    user_message = f"""Query: {query}
+
+Retrieved Cases:
+{case_context}
+
+Provide your expert analysis. If this query is not within your domain, state that clearly."""
+
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=1024,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    findings = response.content[0].text
+
+    return {
+        "domain": domain,
+        "expert_name": profile["name"],
+        "findings": findings,
+        "citations": citations,
+        "chunks_retrieved": len(chunks),
+    }
