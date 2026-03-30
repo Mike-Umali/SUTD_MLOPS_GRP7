@@ -5,6 +5,7 @@ import os
 import time
 
 import taxonomy
+from pipeline.extract import assign_domain
 
 BASE = "https://www.elitigation.sg/gd/Home/Index"
 
@@ -12,7 +13,18 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-MAX_CRIMINAL_CASES = 500
+MAX_NEW_CASES = 500       # How many new cases to add on top of existing
+LINK_BUFFER = 14          # 14x buffer — being selective so need more links
+
+# Per-domain quotas for the new 500 cases.
+# Targets the three weakest domains from retrieval eval.
+# Domains not listed here have no cap — they fill any remaining slots.
+DOMAIN_TARGETS = {
+    "property_financial": 150,
+    "regulatory":         150,
+    "violent_crimes":     100,
+    "sexual_offences":    100,
+}
 
 os.makedirs("cases", exist_ok=True)
 
@@ -37,10 +49,11 @@ def collect_links():
 
     links = []
     page = 1
+    target = MAX_NEW_CASES * LINK_BUFFER
 
     print("\nStarting scraper...\n")
 
-    while len(links) < MAX_CRIMINAL_CASES * 7:  # fetch ~7x to account for civil cases
+    while len(links) < target:
 
         url = f"{BASE}?CurrentPage={page}&Filter=SUPCT"
 
@@ -64,13 +77,13 @@ def collect_links():
 
                     links.append(full)
 
-            if len(links) >= MAX_CRIMINAL_CASES * 7:
+            if len(links) >= target:
                 break
 
         page += 1
         time.sleep(1)
 
-    print("\nCollected", len(links), "cases")
+    print("\nCollected", len(links), "links")
 
     return links
 
@@ -128,20 +141,47 @@ def download_pdf(pdf_url, filename):
 # MAIN
 # -----------------------------------------
 
+def _case_domain(catchwords):
+    """Classify a case's domain from its catchwords using taxonomy + assign_domain."""
+    areas, topics, subtopics = [], [], []
+    for cw in catchwords:
+        result = taxonomy.classify_catchword(cw)
+        if result:
+            area, topic, subtopic, _, _, _ = result
+        else:
+            area, topic, subtopic = taxonomy.split_catchword(cw)
+        if area:   areas.append(area)
+        if topic:  topics.append(topic)
+        if subtopic: subtopics.append(subtopic)
+    return assign_domain(areas, topics, subtopics)
+
+
 def main():
+
+    existing_ids, existing_rows = load_existing()
+    print(f"Loaded {len(existing_ids)} existing cases from {CSV_PATH}")
+
+    # Seed dataset with existing rows so we append, not overwrite
+    dataset.extend(existing_rows)
 
     links = collect_links()
 
-    criminal_count = 0
+    new_count = 0
+    domain_counts = {d: 0 for d in DOMAIN_TARGETS}
 
     for url in links:
 
-        if criminal_count >= MAX_CRIMINAL_CASES:
+        if new_count >= MAX_NEW_CASES:
             break
 
         try:
 
             case_id, title, citation, catchwords, pdf_url = scrape_case(url)
+
+            # Skip already-scraped cases
+            if case_id in existing_ids:
+                print(f"  Already scraped: {case_id} — skipping")
+                continue
 
             # Skip non-criminal cases before downloading PDF
             is_criminal = any(
@@ -153,15 +193,24 @@ def main():
                 print("Skipping non-criminal case:", citation)
                 continue
 
-            criminal_count += 1
-            print(f"Criminal case {criminal_count}/{MAX_CRIMINAL_CASES}")
+            # Determine domain and check quota
+            domain = _case_domain(catchwords)
+            if domain in DOMAIN_TARGETS and domain_counts[domain] >= DOMAIN_TARGETS[domain]:
+                print(f"  Quota full for {domain} — skipping")
+                continue
+
+            new_count += 1
+            if domain in domain_counts:
+                domain_counts[domain] += 1
+
+            print(f"New case {new_count}/{MAX_NEW_CASES} | domain={domain} | {citation}")
+            print(f"  Domain counts: { {d: domain_counts[d] for d in DOMAIN_TARGETS} }")
 
             filename = case_id + ".pdf"
-
             download_pdf(pdf_url, filename)
+            existing_ids.add(case_id)
 
             if not catchwords:
-                # Still record the case with empty labels
                 dataset.append({
                     "filename": filename,
                     "case_name": title,
@@ -183,7 +232,6 @@ def main():
                     if result:
                         area, topic, subtopic, statute, is_criminal, tax_key = result
                     else:
-                        # Fall back to split_catchword for unmatched entries
                         area, topic, subtopic = taxonomy.split_catchword(cw)
                         statute = ""
                         is_criminal = taxonomy.is_criminal_case(area)
@@ -206,14 +254,15 @@ def main():
             time.sleep(1)
 
         except Exception as e:
-
             print("Error:", e)
 
     df = pd.DataFrame(dataset)
+    df.to_csv(CSV_PATH, index=False)
 
-    df.to_csv("dataset.csv", index=False)
-
-    print("\nDONE. dataset.csv saved")
+    total_cases = df["filename"].nunique()
+    print(f"\nDONE. {new_count} new cases added. Total unique cases: {total_cases}")
+    print(f"Domain counts for new cases: { {d: domain_counts[d] for d in DOMAIN_TARGETS} }")
+    print(f"{CSV_PATH} saved ({len(df)} rows)")
 
 
 if __name__ == "__main__":
