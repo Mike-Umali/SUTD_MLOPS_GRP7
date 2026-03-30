@@ -127,7 +127,7 @@ A handcrafted Singapore criminal law taxonomy with **~280 entries**.
 
 ### 1.3 Dataset (`dataset.csv`)
 
-**Shape:** 1,029 rows × 11 columns | 500 unique cases | Years: 2020–2026
+**Shape:** 1,683 rows × 11 columns | 876 unique cases | Years: 2015–2026
 
 | Column | Description |
 |---|---|
@@ -161,122 +161,129 @@ A handcrafted Singapore criminal law taxonomy with **~280 entries**.
 
 | Metric | Value |
 |---|---|
-| Total rows | 1,029 |
-| Unique cases | 500 |
-| Avg catchwords per case | 2.06 |
+| Total rows | 1,683 |
+| Unique cases | 876 |
+| Avg catchwords per case | 1.92 |
 | Max catchwords per case | 11 |
-| Taxonomy match rate | 98.3% |
-| Null subtopic | 5 rows |
-| Null primary_statute | 17 rows |
+| Taxonomy match rate | 98.0% |
+| Null subtopic | 12 rows |
+| Null primary_statute | 34 rows |
 
 #### Court breakdown (unique cases)
 
 | Court | Cases | Description |
 |---|---|---|
-| SGHC | 331 (66.2%) | High Court (General Division) |
-| SGCA | 143 (28.6%) | Court of Appeal |
-| SGHCF | 4 (0.8%) | High Court (Family Division) |
-| Unknown | 22 (4.4%) | Citation format varies |
+| SGHC | 627 (71.6%) | High Court (General Division) |
+| SGCA | 223 (25.5%) | Court of Appeal |
+| SGHCF | 4 (0.5%) | High Court (Family Division) |
+| Unknown | 22 (2.5%) | Citation format varies |
 
 #### Cases by year
 
-| Year | Unique Cases | Catchword Rows |
-|---|---|---|
-| 2020 | 21 | 44 |
-| 2021 | 99 | 185 |
-| 2022 | 91 | 163 |
-| 2023 | 84 | 188 |
-| 2024 | 85 | 176 |
-| 2025 | 77 | 168 |
-| 2026 | 21 | 64 |
+| Year | Unique Cases |
+|---|---|
+| 2015 | 2 |
+| 2016 | 59 |
+| 2017 | 84 |
+| 2018 | 76 |
+| 2019 | 89 |
+| 2020 | 86 |
+| 2021 | 99 |
+| 2022 | 91 |
+| 2023 | 84 |
+| 2024 | 85 |
+| 2025 | 77 |
+| 2026 | 22 |
 
-> 2020 and 2026 are partial years in the dataset (scraper captured up to March 2026).
+> Dataset now covers 2015–2026. 2015 and 2026 are partial years (scraper captured up to March 2026).
 
 #### Area of law distribution (rows)
 
 | Area of Law | Rows | % |
 |---|---|---|
-| Criminal Law | 648 | 63.1% |
-| Criminal Procedure | 279 | 27.1% |
-| Constitutional Law | 40 | 3.9% |
-| Evidence | 23 | 2.2% |
-| Statutory Interpretation | 12 | 1.2% |
-| Administrative Law | 5 | 0.5% |
-| Civil Procedure | 5 | 0.5% |
-| Other | 17 | 1.7% |
+| Criminal Law | 1,148 | 68.3% |
+| Criminal Procedure | 393 | 23.4% |
+| Constitutional Law | 42 | 2.5% |
+| Evidence | 34 | 2.0% |
+| Statutory Interpretation | 26 | 1.5% |
+| Administrative Law | 10 | 0.6% |
+| Civil Procedure | 7 | 0.4% |
+| Other | 23 | 1.4% |
 
 #### Topic distribution (top 10)
 
 | Topic | Rows | % |
 |---|---|---|
-| Sentencing | 253 | 24.6% |
-| Statutory offences | 202 | 19.6% |
-| General | 121 | 11.8% |
-| Sexual offences | 83 | 8.1% |
-| Offences against person | 39 | 3.8% |
-| Review | 33 | 3.2% |
-| Appeals | 30 | 2.9% |
-| Statements | 24 | 2.3% |
-| General exceptions / Defences | 21 | 2.0% |
-| Property offences | 17 | 1.7% |
+| Sentencing | 446 | 26.5% |
+| Statutory offences | 366 | 21.7% |
+| General | 208 | 12.4% |
+| Sexual offences | 127 | 7.5% |
+| Offences against person | 72 | 4.3% |
+| General exceptions / Defences | 34 | 2.0% |
+| Review | 33 | 2.0% |
+| Property offences | 32 | 1.9% |
+| Appeals | 30 | 1.8% |
+| Statements | 29 | 1.7% |
 
-> **Sentencing** is the single largest topic (24.6%), reflecting that a large proportion of criminal appeals in Singapore turn on sentencing rather than conviction.
+> **Sentencing** remains the single largest topic (26.5%), reflecting that Singapore's criminal appellate practice focuses heavily on sentence calibration rather than conviction challenges.
 
 #### Subtopic distribution (top 15)
 
 | Subtopic | Rows | % |
 |---|---|---|
-| General | 306 | 29.7% |
-| Misuse of Drugs Act | 102 | 9.9% |
-| Sentencing principles | 56 | 5.4% |
-| Appeals against sentence | 47 | 4.6% |
-| General sexual offences | 38 | 3.7% |
-| Criminal review | 33 | 3.2% |
-| Criminal appeal | 29 | 2.8% |
-| Rape | 24 | 2.3% |
-| Murder | 17 | 1.7% |
-| Criminal reference | 17 | 1.7% |
-| Property offence | 15 | 1.5% |
-| Penal Code | 14 | 1.4% |
-| Stay of execution | 14 | 1.4% |
-| Prevention of Corruption Act | 13 | 1.3% |
-| Outrage of modesty | 12 | 1.2% |
+| General | 555 | 33.0% |
+| Misuse of Drugs Act | 220 | 13.1% |
+| Appeals against sentence | 83 | 4.9% |
+| Sentencing principles | 81 | 4.8% |
+| Rape | 46 | 2.7% |
+| General sexual offences | 41 | 2.4% |
+| Criminal review | 33 | 2.0% |
+| Criminal appeal | 29 | 1.7% |
+| Murder | 28 | 1.7% |
+| Criminal reference | 27 | 1.6% |
+| Property offence | 26 | 1.5% |
+| Outrage of modesty | 22 | 1.3% |
+| Penal Code | 20 | 1.2% |
+| Prevention of Corruption Act | 13 | 0.8% |
+| Culpable homicide | 14 | 0.8% |
 
 #### Primary statute distribution (top 10)
 
 | Primary Statute | Rows | % |
 |---|---|---|
-| Criminal Procedure Code 2010 | 424 | 41.2% |
-| Misuse of Drugs Act | 102 | 9.9% |
-| Penal Code | 54 | 5.2% |
-| Penal Code Pt XI (Sexual offences) | 38 | 3.7% |
-| Criminal Procedure Code 2010 s 394H (Review) | 33 | 3.2% |
-| Penal Code s 375 (Rape) | 24 | 2.3% |
-| Evidence Act | 22 | 2.1% |
-| Criminal Procedure Code 2010 s 397 (Reference) | 17 | 1.7% |
-| Penal Code s 300 (Murder) | 17 | 1.7% |
-| Prevention of Corruption Act | 14 | 1.4% |
+| Criminal Procedure Code 2010 | 697 | 41.4% |
+| Misuse of Drugs Act | 220 | 13.1% |
+| Penal Code | 109 | 6.5% |
+| Penal Code s 375 (Rape) | 46 | 2.7% |
+| Penal Code Pt XI (Sexual offences) | 41 | 2.4% |
+| Criminal Procedure Code 2010 s 394H (Review) | 33 | 2.0% |
+| Evidence Act | 31 | 1.8% |
+| Penal Code s 300 (Murder) | 28 | 1.7% |
+| Criminal Procedure Code 2010 s 397 (Reference) | 27 | 1.6% |
+| Interpretation Act | 26 | 1.5% |
 
 #### is_criminal label distribution
 
-| Label | Rows | Unique Cases |
+| Label | Rows | % |
 |---|---|---|
-| True (criminal) | 927 (90.1%) | 479 (95.8%) |
-| False (non-criminal catchword) | 102 (9.9%) | 21 (4.2%) |
+| True (criminal) | 1,542 | 91.6% |
+| False (non-criminal catchword) | 141 | 8.4% |
 
-> Cases with `is_criminal=False` rows are mixed criminal/civil matters (e.g. constitutional challenges arising out of criminal proceedings, civil procedure questions in criminal appeals). The case itself is criminal — the individual catchword touches a non-criminal area.
+> Cases with `is_criminal=False` rows are mixed criminal/civil matters (e.g. constitutional challenges arising from criminal proceedings, civil procedure questions in criminal appeals). The case itself is criminal — the individual catchword touches a non-criminal area.
 
 #### Key observations
 
-1. **Sentencing dominates** — 24.6% of all catchwords relate to sentencing. Singapore's criminal appellate practice heavily focuses on sentence calibration rather than conviction challenges.
+1. **Sentencing dominates** — 26.5% of all catchwords relate to sentencing. Singapore's criminal appellate practice heavily focuses on sentence calibration rather than conviction challenges.
 
-2. **MDA is the top specific statute** — Misuse of Drugs Act cases make up ~10% of all catchwords, driven by Singapore's mandatory death penalty jurisprudence and the large volume of trafficking cases.
+2. **MDA is the top specific statute** — Misuse of Drugs Act cases make up 13.1% of all catchwords, driven by Singapore's mandatory death penalty jurisprudence and the large volume of trafficking cases.
 
-3. **Court of Appeal vs High Court split** — 28.6% of cases are Court of Appeal decisions, which tend to be high-value precedent-setting judgments on sentencing frameworks and legal principles.
+3. **Court of Appeal vs High Court split** — 25.5% of cases are Court of Appeal decisions, which tend to be high-value precedent-setting judgments on sentencing frameworks and legal principles.
 
-4. **Sexual offences are well-represented** — 8.1% of rows, driven by evolving sentencing band frameworks (Pram Nair, GBR) that generate significant appellate activity.
+4. **Sexual offences are well-represented** — 7.5% of rows, driven by evolving sentencing band frameworks generating significant appellate activity.
 
-5. **Taxonomy coverage** — After expanding the taxonomy from ~180 to ~280 entries and fixing case-insensitive matching, unmatched catchwords dropped from 21.5% to **1.7%** (17 rows out of 1,029).
+5. **Expanded historical coverage** — Dataset now spans 2015–2026 (vs 2020–2026 previously), adding key precedent cases from before 2020.
+
+6. **Taxonomy coverage** — Unmatched catchwords at **2.0%** (34 rows out of 1,683), consistent with the expanded dataset.
 
 ---
 
