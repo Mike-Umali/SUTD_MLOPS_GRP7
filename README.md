@@ -447,6 +447,129 @@ export ANTHROPIC_API_KEY=sk-ant-...
 
 ---
 
+## Part 4: Evaluation Pipeline (`eval/`)
+
+Three-layer evaluation covering retrieval quality, agent routing accuracy, and end-to-end advisory quality.
+
+### Running the evaluation
+
+```bash
+# Retrieval only — no API key required, runs in ~30 seconds
+python eval/run_eval.py --retrieval
+
+# Routing accuracy — requires Anthropic API
+python eval/run_eval.py --routing
+
+# Advisory quality — requires Anthropic API, runs ~10 full pipeline queries
+python eval/run_eval.py --advisory
+
+# Everything
+python eval/run_eval.py --all
+```
+
+### Layer 1 — Retrieval Evaluation (`eval/retrieval_eval.py`)
+
+No API calls. Queries ChromaDB directly for each of 20 test cases and measures:
+
+- **Hit rate** — does a relevant subtopic appear in the top-5 retrieved chunks?
+- **Avg relevance score** — mean cosine similarity of the top-5 results (0–1, higher is better)
+
+**Baseline results:**
+
+| Domain | Hit Rate | Avg Score |
+|---|---|---|
+| drug_offences | 1.000 | 0.673 |
+| sentencing | 1.000 | 0.648 |
+| criminal_procedure | 0.750 | 0.654 |
+| violent_crimes | 0.667 | 0.568 |
+| sexual_offences | 0.667 | 0.543 |
+| regulatory | 0.667 | 0.476 |
+| property_financial | 0.500 | 0.479 |
+| **Overall** | **0.750** | **0.583** |
+
+> `property_financial` and `regulatory` are the weakest domains — directly motivating the plan to add 500 more cases targeting those areas.
+
+### Layer 2 — Routing Evaluation (`eval/routing_eval.py`)
+
+Runs the Manager Agent on 20 test queries and compares the actual domains routed to against hand-labelled ground truth.
+
+Metrics (set-based, per query):
+- **Precision** — of the domains the manager selected, what fraction were correct?
+- **Recall** — of the correct domains, what fraction did the manager select?
+- **F1** — harmonic mean of precision and recall
+- **Exact match** — did the manager select exactly the right set of domains?
+
+### Layer 3 — Advisory Evaluation (`eval/advisory_eval.py`)
+
+Runs the full pipeline (Manager → Experts → QA Agent) on a 10-query subset, then uses **Claude as judge** to score each advisory.
+
+#### How LLM-as-judge works
+
+```
+Query
+  │
+  ▼
+Full pipeline runs  →  Manager → Experts → QA Agent
+  │
+  ▼
+Advisory text produced  (~1,500 words)
+  │
+  ▼
+New Claude call (the "judge"):
+  Input:  original query + advisory
+  Task:   score on 5 dimensions, output JSON only
+  │
+  ▼
+{ "legal_accuracy": 4, "completeness": 5, "citation_quality": 3, ... }
+```
+
+The judge uses a deliberately adversarial rubric ("deduct marks for X") rather than a rewarding one, to counteract self-evaluation bias (Claude judging Claude's own output tends to be generous).
+
+#### The 5 scoring dimensions (each 1–5)
+
+| Dimension | What it checks |
+|---|---|
+| `legal_accuracy` | Correct statute sections, case law, legal principles — deducts for wrong section numbers or misattributed cases |
+| `completeness` | All key legal issues from the query addressed — deducts for omissions a practitioner would expect |
+| `citation_quality` | Citations in proper Singapore neutral citation format `[2024] SGHC 123`, relevant and on-point — deducts for hallucinated citations |
+| `format_compliance` | All 6 advisory sections present and properly headed (Case Classification → Cases Referenced) |
+| `actionability` | RECOMMENDED NEXT STEPS are numbered, prioritised, and specific — deducts for vague generalities |
+
+#### Example judge output
+
+```json
+{
+  "legal_accuracy": 4,
+  "completeness": 5,
+  "citation_quality": 3,
+  "format_compliance": 5,
+  "actionability": 4,
+  "reasoning": {
+    "legal_accuracy": "Correctly cited s 375(4) defence but omitted s 90 vitiating conditions.",
+    "citation_quality": "Two citations appear fabricated — [2021] SGHC 999 does not exist.",
+    "actionability": "Next steps are numbered and specific, covering voir dire and plea mitigation."
+  }
+}
+```
+
+The `reasoning` field identifies exactly why a score was low, making it actionable for improving the pipeline.
+
+#### Known limitation
+
+Claude judging its own output introduces self-evaluation bias — scores will tend to skew 3.5–4.5. For more rigorous evaluation, use a different model as judge (e.g. GPT-4o judging Claude's output) to eliminate this bias.
+
+### Test Set (`eval/test_set.py`)
+
+20 hand-crafted queries with ground truth covering all 7 expert domains, including cross-domain cases (e.g. drug trafficking + sentencing, sexual offences + criminal procedure).
+
+Each test case includes:
+- `expected_domains` — correct domains for routing eval
+- `domain_for_retrieval` — which ChromaDB collection to test
+- `relevant_subtopics` — exact subtopic strings from dataset metadata (for hit detection)
+- `expected_keywords` — keywords that should appear in the final advisory
+
+---
+
 ## File Structure
 
 ```
@@ -463,6 +586,12 @@ MLOPSproj/
 │       ├── manager.py      # Manager agent (tool_use orchestration)
 │       ├── experts.py      # 7 specialist expert agents
 │       └── qa.py           # QA agent (final advisory synthesis)
+├── eval/
+│   ├── test_set.py         # 20 test queries with ground truth
+│   ├── retrieval_eval.py   # Hit rate + cosine similarity (no API)
+│   ├── routing_eval.py     # Manager routing precision/recall/F1
+│   ├── advisory_eval.py    # LLM-as-judge end-to-end scoring
+│   └── run_eval.py         # Master runner (--retrieval/--routing/--advisory/--all)
 ├── cases/                  # Downloaded PDFs — gitignored (~500MB)
 └── chroma_db/              # ChromaDB persistent store — gitignored
 ```
