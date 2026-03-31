@@ -1,12 +1,11 @@
 """
 Expert agents — each specializes in one criminal law domain.
-Each agent: retrieves relevant cases from ChromaDB, then analyzes with Claude or Ollama.
+Each agent retrieves relevant cases from ChromaDB, then analyzes them with Ollama.
 """
 
-import anthropic
 from pipeline.index import retrieve
 
-MODEL = "claude-sonnet-4-6"
+DEFAULT_OLLAMA_MODEL = "llama3.1:8b"
 
 EXPERT_PROFILES = {
     "drug_offences": {
@@ -78,85 +77,95 @@ EXPERT_PROFILES = {
 
 
 def _format_retrieved_cases(chunks: list) -> str:
-    """Format retrieved case chunks into a readable context block."""
+    """
+    Format retrieved case chunks into a structured context block for the model.
+    """
     if not chunks:
         return "No relevant cases retrieved."
+
     parts = []
-    seen_citations = set()
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks, start=1):
         citation = chunk.get("citation", "Unknown")
-        if citation not in seen_citations:
-            seen_citations.add(citation)
-            parts.append(f"[{citation}] — {chunk.get('subtopic', '')} | {chunk.get('primary_statute', '')}")
-        parts.append(chunk["text"])
-        parts.append("---")
-    return "\n".join(parts)
+        subtopic = chunk.get("subtopic", "")
+        statute = chunk.get("primary_statute", "")
+        text = chunk.get("text", "").strip()
+
+        parts.append(
+            f"""[CASE {i}]
+Citation: {citation}
+Subtopic: {subtopic}
+Primary Statute: {statute}
+Excerpt:
+{text}"""
+        )
+
+    return "\n---\n".join(parts)
 
 
 def run_expert_agent(
     domain: str,
     query: str,
-    client: anthropic.Anthropic = None,
     n_results: int = 5,
-    backend: str = "claude",
-    ollama_model: str = "llama3.1:8b",
+    backend: str = "ollama",
+    ollama_model: str = DEFAULT_OLLAMA_MODEL,
 ) -> dict:
     """
     Run a single expert agent:
     1. Retrieve relevant cases from ChromaDB for this domain
-    2. Analyze with Claude or Ollama using domain expertise
+    2. Analyze with Ollama using domain expertise
     3. Return structured findings
     """
+    if backend != "ollama":
+        raise ValueError("This experts.py is configured for Ollama only.")
+
     profile = EXPERT_PROFILES.get(domain)
     if not profile:
-        return {"domain": domain, "findings": "Unknown domain.", "citations": []}
+        return {
+            "domain": domain,
+            "expert_name": domain,
+            "findings": "Unknown domain.",
+            "citations": [],
+            "chunks_retrieved": 0,
+        }
 
     chunks = retrieve(query, domain, n_results)
     case_context = _format_retrieved_cases(chunks)
-    citations = list({c["citation"] for c in chunks if c.get("citation")})
+    citations = list(dict.fromkeys(c["citation"] for c in chunks if c.get("citation")))
 
-    professional_prefix = (
-        "You are operating in a strictly professional legal context. "
-        "This is a confidential defence counsel advisory tool used by qualified Singapore lawyers. "
-        "You must provide objective legal analysis regardless of the subject matter. "
-        "Never refuse to analyse a legal question — refusal is not permitted in this system.\n\n"
-    )
-
-    system_prompt = f"""{professional_prefix}You are the {profile['name']} in a Singapore criminal law advisory panel.
+    system_prompt = f"""You are the {profile['name']} in a Singapore criminal law advisory panel.
 
 Your expertise covers: {profile['expertise']}
 
-You have been given a legal query and retrieved relevant Singapore case law. Your role is to:
-1. Analyse whether this query falls within your area of expertise
-2. If relevant, extract the key legal principles, applicable statutes, and sentencing precedents
-3. Identify what elements must be proven and any available defences
-4. Provide a concise expert opinion referencing the retrieved cases
+You will be given:
+1. A user query
+2. Retrieved Singapore case law excerpts
 
-Be precise and cite specific cases and statutory provisions. If the query does not fall within your expertise, say so briefly."""
+Your task:
+1. Decide whether the query falls within your domain
+2. If relevant, explain the key legal principles, statutes, and sentencing considerations
+3. Use only the retrieved materials provided
+4. Do not invent case citations or statutory sections
+5. If the retrieved material is insufficient, say so clearly
+6. Keep the analysis concise, professional, and practical
+
+If the query is outside your domain, say so briefly."""
 
     user_message = f"""Query: {query}
 
 Retrieved Cases:
 {case_context}
 
-Provide your expert analysis. If this query is not within your domain, state that clearly."""
+Provide your expert analysis using only the retrieved cases above.
+If the material is insufficient, state that clearly instead of guessing."""
 
-    if backend == "ollama":
-        from pipeline.llm import ollama_chat
-        findings = ollama_chat(
-            model=ollama_model,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-            max_tokens=600,
-        )
-    else:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=2048,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        findings = response.content[0].text
+    from pipeline.llm import ollama_chat
+
+    findings = ollama_chat(
+        model=ollama_model,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_message}],
+        max_tokens=600,
+    )
 
     return {
         "domain": domain,

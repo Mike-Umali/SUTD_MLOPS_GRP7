@@ -50,9 +50,7 @@ def build_index(csv_path: str = "dataset.csv", batch_size: int = 100):
     embedding_fn = get_embedding_fn()
     collections = {d: get_collection(d, client, embedding_fn) for d in DOMAINS}
 
-    # Track existing IDs per collection to avoid duplicates
     existing = {d: set(collections[d].get()["ids"]) for d in DOMAINS}
-
     buffer = {d: {"ids": [], "docs": [], "metas": []} for d in DOMAINS}
 
     print("Building index...")
@@ -89,7 +87,6 @@ def build_index(csv_path: str = "dataset.csv", batch_size: int = 100):
             print(f"  Indexed {len(buf['ids'])} chunks → {domain} (total: {total})")
             buffer[domain] = {"ids": [], "docs": [], "metas": []}
 
-    # Flush remaining
     for domain, buf in buffer.items():
         if buf["ids"]:
             collections[domain].add(
@@ -112,16 +109,33 @@ def retrieve(query: str, domain: str, n_results: int = 5) -> list[dict]:
     """
     Retrieve top-n relevant chunks from a domain collection.
     Returns list of dicts with text and metadata.
+    Safely returns [] if the collection is empty or unavailable.
     """
-    collection = get_collection(domain)
-    results = collection.query(
-        query_texts=[query],
-        n_results=min(n_results, collection.count()),
-        include=["documents", "metadatas", "distances"],
-    )
+    try:
+        collection = get_collection(domain)
+        collection_count = collection.count()
+    except Exception as e:
+        print(f"[retrieve] Failed to access collection '{domain}': {e}")
+        return []
+
+    if collection_count <= 0:
+        print(f"[retrieve] Collection '{domain}' is empty.")
+        return []
+
+    safe_n_results = min(max(n_results, 1), collection_count)
+
+    try:
+        results = collection.query(
+            query_texts=[query],
+            n_results=safe_n_results,
+            include=["documents", "metadatas", "distances"],
+        )
+    except Exception as e:
+        print(f"[retrieve] Query failed for domain '{domain}': {e}")
+        return []
 
     chunks = []
-    if not results["documents"] or not results["documents"][0]:
+    if not results.get("documents") or not results["documents"][0]:
         return chunks
 
     for doc, meta, dist in zip(
@@ -129,6 +143,7 @@ def retrieve(query: str, domain: str, n_results: int = 5) -> list[dict]:
         results["metadatas"][0],
         results["distances"][0],
     ):
+        meta = meta or {}
         chunks.append({
             "text": doc,
             "citation": meta.get("citation", ""),
@@ -145,3 +160,14 @@ def retrieve(query: str, domain: str, n_results: int = 5) -> list[dict]:
 def retrieve_multi_domain(query: str, domains: list[str], n_per_domain: int = 3) -> dict[str, list[dict]]:
     """Retrieve from multiple domain collections."""
     return {d: retrieve(query, d, n_per_domain) for d in domains}
+
+
+def print_collection_counts():
+    """Debug helper: print how many chunks exist in each domain collection."""
+    print("Chroma collection counts:")
+    for domain in DOMAINS:
+        try:
+            count = get_collection(domain).count()
+            print(f"  {domain}: {count}")
+        except Exception as e:
+            print(f"  {domain}: ERROR ({e})")
