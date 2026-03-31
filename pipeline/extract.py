@@ -76,11 +76,11 @@ def iter_case_chunks(csv_path: str = "dataset.csv") -> Generator[dict, None, Non
         citation = first.get("citation", "")
         case_name = first.get("case_name", "")
 
-        # Collect all areas/topics for this case
-        areas = list({r.get("area_of_law", "") for r in rows if r.get("area_of_law")})
-        topics = list({r.get("topic", "") for r in rows if r.get("topic")})
-        subtopics = list({r.get("subtopic", "") for r in rows if r.get("subtopic")})
-        statutes = list({r.get("primary_statute", "") for r in rows if r.get("primary_statute")})
+        # Collect all areas/topics for this case — filter out NaN (float) values
+        areas = list({r.get("area_of_law", "") for r in rows if isinstance(r.get("area_of_law"), str) and r.get("area_of_law")})
+        topics = list({r.get("topic", "") for r in rows if isinstance(r.get("topic"), str) and r.get("topic")})
+        subtopics = list({r.get("subtopic", "") for r in rows if isinstance(r.get("subtopic"), str) and r.get("subtopic")})
+        statutes = list({r.get("primary_statute", "") for r in rows if isinstance(r.get("primary_statute"), str) and r.get("primary_statute")})
         domain = assign_domain(areas, topics, subtopics)
 
         text = extract_text(pdf_path)
