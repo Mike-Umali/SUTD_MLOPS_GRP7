@@ -1,10 +1,10 @@
 """
 Streamlit app — Singapore Criminal Law Advisory System.
 Multi-agent RAG pipeline: Manager → Expert Agents → QA Agent.
+Supports Claude (online) and Ollama (local/offline) backends.
 """
 
 import os
-import anthropic
 import streamlit as st
 
 from pipeline.agents.manager import run_manager_agent
@@ -19,16 +19,53 @@ st.set_page_config(
 
 with st.sidebar:
     st.title("Configuration")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        value=os.environ.get("ANTHROPIC_API_KEY", ""),
-        help="Your key is used only for this session and never stored.",
+
+    backend = st.radio(
+        "Backend",
+        options=["Claude (online)", "Ollama (local)"],
+        index=0,
+        help="Claude uses the Anthropic API. Ollama runs fully offline on your machine.",
     )
+    use_ollama = backend == "Ollama (local)"
+
+    st.divider()
+
+    if use_ollama:
+        from pipeline.llm import ollama_available, list_ollama_models
+        ollama_ok = ollama_available()
+
+        if ollama_ok:
+            st.success("Ollama is running")
+            available_models = list_ollama_models()
+            if available_models:
+                ollama_model = st.selectbox(
+                    "Model",
+                    options=available_models,
+                    help="Select a locally available Ollama model.",
+                )
+            else:
+                st.warning("No models found. Run: `ollama pull llama3.1:8b`")
+                ollama_model = st.text_input("Model name", value="llama3.1:8b")
+        else:
+            st.error("Ollama not reachable. Start it with: `ollama serve`")
+            ollama_model = st.text_input("Model name", value="llama3.1:8b")
+
+        api_key = None
+        client = None
+    else:
+        api_key = st.text_input(
+            "Anthropic API Key",
+            type="password",
+            value=os.environ.get("ANTHROPIC_API_KEY", ""),
+            help="Your key is used only for this session and never stored.",
+        )
+        ollama_model = None
+        client = None
+
     st.divider()
     st.markdown("**About**")
     st.markdown(
-        "Multi-agent RAG pipeline over **500 Singapore criminal judgments** (2020–2026) "
+        "Multi-agent RAG pipeline over **876 Singapore criminal judgments** (2015–2026) "
         "from the Supreme Court of Singapore."
     )
     st.markdown("**Pipeline**")
@@ -48,7 +85,7 @@ with st.sidebar:
         "- Regulatory Offences"
     )
     st.divider()
-    st.caption("SUTD MLOPS Group 7 | Powered by Claude + ChromaDB")
+    st.caption("SUTD MLOPS Group 7 · Claude + ChromaDB" if not use_ollama else "SUTD MLOPS Group 7 · Ollama + ChromaDB")
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -77,20 +114,27 @@ run_btn = st.button(
 # ── Pipeline execution ────────────────────────────────────────────────────────
 
 if run_btn:
-    if not api_key:
-        st.error("Please enter your Anthropic API Key in the sidebar.")
-        st.stop()
+    if not use_ollama:
+        if not api_key:
+            st.error("Please enter your Anthropic API Key in the sidebar.")
+            st.stop()
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
 
-    client = anthropic.Anthropic(api_key=api_key)
-
-    # Clear any previous results from session state
+    # Clear any previous results
     for key in ("manager_output", "qa_output"):
         st.session_state.pop(key, None)
 
-    # Step 1 — Manager Agent
-    with st.status("Manager Agent routing query to experts...", expanded=True) as status:
+    label_backend = f"Ollama ({ollama_model})" if use_ollama else "Claude"
+
+    with st.status(f"Manager Agent routing query to experts ({label_backend})...", expanded=True) as status:
         try:
-            manager_output = run_manager_agent(query, client)
+            manager_output = run_manager_agent(
+                user_query=query,
+                client=client,
+                backend="ollama" if use_ollama else "claude",
+                ollama_model=ollama_model or "llama3.1:8b",
+            )
         except Exception as e:
             status.update(label="Manager Agent failed", state="error")
             st.error(f"Manager Agent error: {e}")
@@ -99,13 +143,14 @@ if run_btn:
         experts = manager_output["experts_consulted"]
         st.write(f"Experts consulted: {', '.join(experts)}")
 
-        # Step 2 — QA Agent
-        status.update(label="QA Agent synthesising findings...")
+        status.update(label=f"QA Agent synthesising findings ({label_backend})...")
         try:
             qa_output = run_qa_agent(
                 user_query=query,
                 expert_results=manager_output["expert_results"],
                 client=client,
+                backend="ollama" if use_ollama else "claude",
+                ollama_model=ollama_model or "llama3.1:8b",
             )
         except Exception as e:
             status.update(label="QA Agent failed", state="error")
@@ -126,7 +171,6 @@ if "qa_output" in st.session_state and "manager_output" in st.session_state:
 
     st.divider()
 
-    # Summary row
     col_class, col_experts = st.columns([3, 2])
     with col_class:
         st.subheader("Case Classification")
@@ -138,7 +182,6 @@ if "qa_output" in st.session_state and "manager_output" in st.session_state:
 
     st.divider()
 
-    # Tabs: Final Advisory | Expert Findings
     tab_advisory, tab_experts = st.tabs(["Final Advisory", "Expert Findings"])
 
     with tab_advisory:

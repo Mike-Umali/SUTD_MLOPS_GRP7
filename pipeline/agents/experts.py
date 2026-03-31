@@ -1,6 +1,6 @@
 """
 Expert agents — each specializes in one criminal law domain.
-Each agent: retrieves relevant cases from ChromaDB, then analyzes with Claude.
+Each agent: retrieves relevant cases from ChromaDB, then analyzes with Claude or Ollama.
 """
 
 import anthropic
@@ -77,7 +77,7 @@ EXPERT_PROFILES = {
 }
 
 
-def _format_retrieved_cases(chunks: list[dict]) -> str:
+def _format_retrieved_cases(chunks: list) -> str:
     """Format retrieved case chunks into a readable context block."""
     if not chunks:
         return "No relevant cases retrieved."
@@ -96,13 +96,15 @@ def _format_retrieved_cases(chunks: list[dict]) -> str:
 def run_expert_agent(
     domain: str,
     query: str,
-    client: anthropic.Anthropic,
+    client: anthropic.Anthropic = None,
     n_results: int = 5,
+    backend: str = "claude",
+    ollama_model: str = "llama3.1:8b",
 ) -> dict:
     """
     Run a single expert agent:
     1. Retrieve relevant cases from ChromaDB for this domain
-    2. Analyze with Claude using domain expertise
+    2. Analyze with Claude or Ollama using domain expertise
     3. Return structured findings
     """
     profile = EXPERT_PROFILES.get(domain)
@@ -132,14 +134,22 @@ Retrieved Cases:
 
 Provide your expert analysis. If this query is not within your domain, state that clearly."""
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
-    )
-
-    findings = response.content[0].text
+    if backend == "ollama":
+        from pipeline.llm import ollama_chat
+        findings = ollama_chat(
+            model=ollama_model,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+            max_tokens=2048,
+        )
+    else:
+        response = client.messages.create(
+            model=MODEL,
+            max_tokens=2048,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        findings = response.content[0].text
 
     return {
         "domain": domain,
