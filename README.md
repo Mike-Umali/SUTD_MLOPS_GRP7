@@ -29,7 +29,7 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
   classify_catchword()  ──── taxonomy longest-prefix match
          │
          ▼
-  dataset.csv  ──── 500 cases, 1,029 rows, 11 columns
+  dataset.csv  ──── 876 cases, 1,683 rows, 11 columns
 
 
                         ┌─────────────────────────────────────┐
@@ -90,9 +90,10 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
 Scrapes Singapore Supreme Court criminal judgments from eLitigation.
 
 **Key design decisions:**
-- Collects 3,500 candidate URLs (7x buffer) — ~85% of SUPCT cases are civil
+- Collects up to 14× buffer of candidate URLs — ~85% of SUPCT cases are civil
 - Checks `is_criminal_case()` **before** downloading PDFs (saves bandwidth and storage)
-- Stops exactly at 500 confirmed criminal cases
+- Supports incremental runs: skips already-scraped case IDs, appends new rows to `dataset.csv`
+- Per-domain quotas (`DOMAIN_TARGETS`) allow targeted expansion of under-represented domains
 - Each row includes: `filename`, `case_name`, `citation`, `catchword`, `area_of_law`, `topic`, `subtopic`, `primary_statute`, `is_criminal`, `taxonomy_key`, `pdf_url`
 
 ### 1.2 Taxonomy (`taxonomy.py`)
@@ -322,19 +323,19 @@ Builds and queries the ChromaDB vector store.
 - `retrieve(query, domain, n_results=5)` — returns top-n chunks with relevance scores
 - `retrieve_multi_domain(query, domains, n_per_domain=3)` — queries multiple domains
 
-**Index statistics (after full build):**
+**Index statistics (876 cases — full build):**
 
 | Domain | Chunks |
 |---|---|
-| sentencing | ~2,200 |
-| drug_offences | ~2,000 |
-| criminal_procedure | ~1,500 |
-| sexual_offences | ~1,400 |
-| violent_crimes | ~500 |
-| property_financial | ~300 |
-| regulatory | ~100 |
-| general | ~100 |
-| **Total** | **~8,100** |
+| drug_offences | 23,892 |
+| sentencing | 20,496 |
+| sexual_offences | 14,243 |
+| criminal_procedure | 13,725 |
+| violent_crimes | 7,480 |
+| general | 5,382 |
+| property_financial | 5,385 |
+| regulatory | 1,019 |
+| **Total** | **83,322** |
 
 Build the index (run once):
 ```bash
@@ -494,7 +495,29 @@ No API calls. Queries ChromaDB directly for each of 20 test cases and measures:
 | property_financial | 0.500 | 0.479 |
 | **Overall** | **0.750** | **0.583** |
 
-> `property_financial` and `regulatory` are the weakest domains — directly motivating the plan to add 500 more cases targeting those areas.
+> `property_financial` and `regulatory` were the weakest domains — directly motivating a targeted expansion to 876 cases.
+
+**Post-expansion results (876 cases — 83,322 chunks):**
+
+| Domain | Hit Rate | Avg Score |
+|---|---|---|
+| drug_offences | 1.000 | 0.741 |
+| sentencing | 1.000 | 0.709 |
+| criminal_procedure | 1.000 | 0.693 |
+| violent_crimes | 1.000 | 0.679 |
+| sexual_offences | 1.000 | 0.639 |
+| property_financial | 1.000 | 0.663 |
+| regulatory | 0.667 | 0.533 |
+| **Overall** | **0.950** | **0.664** |
+
+**Before vs After:**
+
+| Metric | Baseline (500 cases) | Post-expansion (876 cases) |
+|---|---|---|
+| Hit rate | 0.750 (15/20) | **0.950 (19/20)** |
+| Avg cosine score | 0.583 | **0.664** |
+
+> `property_financial` improved from 0.500 → 1.000 after targeted expansion. `regulatory` remains at 0.667 (1 miss: WSHA workplace fatality, TC-19) — regulatory cases are predominantly in SGDC (District Court) which is not scraped from the SUPCT source.
 
 ### Layer 2 — Routing Evaluation (`eval/routing_eval.py`)
 
@@ -583,7 +606,7 @@ Each test case includes:
 MLOPSproj/
 ├── scraper.py              # eLitigation scraper (500 criminal cases)
 ├── taxonomy.py             # Singapore criminal law taxonomy (~280 entries)
-├── dataset.csv             # Labeled dataset (500 cases, 1,029 rows)
+├── dataset.csv             # Labeled dataset (876 cases, 1,683 rows)
 ├── main.py                 # CLI entry point for the agentic pipeline
 ├── app.py                  # Streamlit web app
 ├── pipeline/
