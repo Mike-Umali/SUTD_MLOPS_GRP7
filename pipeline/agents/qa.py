@@ -45,7 +45,7 @@ def run_qa_agent(
     expert_results: list,
     client: anthropic.Anthropic = None,
     backend: str = "claude",
-    ollama_model: str = "llama3.2:3b",
+    ollama_model: str = "llama3.1:8b",
 ) -> dict:
     """
     QA Agent: synthesises all expert findings into a structured advisory.

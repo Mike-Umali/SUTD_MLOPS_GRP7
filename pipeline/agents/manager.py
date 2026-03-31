@@ -34,7 +34,7 @@ def run_manager_agent(
     user_query: str,
     client: anthropic.Anthropic = None,
     backend: str = "claude",
-    ollama_model: str = "llama3.2:3b",
+    ollama_model: str = "llama3.1:8b",
 ) -> dict:
     """
     Manager agent: routes the query to relevant expert agents.
