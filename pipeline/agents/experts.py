@@ -99,7 +99,7 @@ def run_expert_agent(
     client: anthropic.Anthropic = None,
     n_results: int = 5,
     backend: str = "claude",
-    ollama_model: str = "llama3.1:8b",
+    ollama_model: str = "llama3.2:3b",
 ) -> dict:
     """
     Run a single expert agent:
@@ -140,7 +140,7 @@ Provide your expert analysis. If this query is not within your domain, state tha
             model=ollama_model,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
-            max_tokens=2048,
+            max_tokens=600,
         )
     else:
         response = client.messages.create(

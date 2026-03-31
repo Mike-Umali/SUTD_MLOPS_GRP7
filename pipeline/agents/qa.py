@@ -43,7 +43,7 @@ def run_qa_agent(
     expert_results: list,
     client: anthropic.Anthropic = None,
     backend: str = "claude",
-    ollama_model: str = "llama3.1:8b",
+    ollama_model: str = "llama3.2:3b",
 ) -> dict:
     """
     QA Agent: synthesises all expert findings into a structured advisory.
@@ -71,7 +71,7 @@ Produce the final legal advisory note."""
             model=ollama_model,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
-            max_tokens=4096,
+            max_tokens=1200,
         )
     else:
         response = client.messages.create(

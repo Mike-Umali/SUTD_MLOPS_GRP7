@@ -44,11 +44,11 @@ with st.sidebar:
                     help="Select a locally available Ollama model.",
                 )
             else:
-                st.warning("No models found. Run: `ollama pull llama3.1:8b`")
-                ollama_model = st.text_input("Model name", value="llama3.1:8b")
+                st.warning("No models found. Run: `ollama pull llama3.2:3b`")
+                ollama_model = st.text_input("Model name", value="llama3.2:3b")
         else:
             st.error("Ollama not reachable. Start it with: `ollama serve`")
-            ollama_model = st.text_input("Model name", value="llama3.1:8b")
+            ollama_model = st.text_input("Model name", value="llama3.2:3b")
 
         api_key = None
         client = None
@@ -133,7 +133,7 @@ if run_btn:
                 user_query=query,
                 client=client,
                 backend="ollama" if use_ollama else "claude",
-                ollama_model=ollama_model or "llama3.1:8b",
+                ollama_model=ollama_model or "llama3.2:3b",
             )
         except Exception as e:
             status.update(label="Manager Agent failed", state="error")
@@ -150,7 +150,7 @@ if run_btn:
                 expert_results=manager_output["expert_results"],
                 client=client,
                 backend="ollama" if use_ollama else "claude",
-                ollama_model=ollama_model or "llama3.1:8b",
+                ollama_model=ollama_model or "llama3.2:3b",
             )
         except Exception as e:
             status.update(label="QA Agent failed", state="error")
