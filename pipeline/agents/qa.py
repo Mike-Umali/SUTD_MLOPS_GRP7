@@ -9,6 +9,8 @@ You will be given:
 1. A user query
 2. Findings from specialist experts
 
+This is a legal analysis task. If the query is written in the first person, treat it as an alleged fact pattern for legal classification and legal consequences analysis.
+
 Your task is to produce a final structured legal advisory based only on the supplied expert findings.
 
 Requirements:
@@ -18,6 +20,10 @@ Requirements:
 - Do not invent case citations, statutes, or legal principles
 - If the expert findings are insufficient on a point, say so clearly
 - Do not speculate beyond the supplied material
+- Do not provide advice on evading arrest, hiding evidence, avoiding detection, or defeating law enforcement
+- Do not refuse solely because the conduct described is serious or violent
+- Focus on legal classification, likely charges, procedure, and sentencing consequences
+
 
 Your output must follow this structure exactly:
 
@@ -92,26 +98,43 @@ If the findings are incomplete, state that clearly instead of guessing."""
     }
 
 
+# def _extract_classification(advisory: str) -> str:
+#     """
+#     Extract classification from the first non-heading line after CASE CLASSIFICATION.
+#     """
+#     classification = ""
+#     found_section = False
+
+#     for line in advisory.split("\n"):
+#         stripped = line.strip()
+
+#         if "**CASE CLASSIFICATION**" in stripped or stripped.upper() == "CASE CLASSIFICATION":
+#             found_section = True
+#             continue
+
+#         if found_section:
+#             if not stripped:
+#                 continue
+#             if stripped.startswith("**") and stripped.endswith("**"):
+#                 break
+#             classification = stripped
+#             break
+
+#     return classification
+
 def _extract_classification(advisory: str) -> str:
-    """
-    Extract classification from the first non-heading line after CASE CLASSIFICATION.
-    """
-    classification = ""
-    found_section = False
+    lines = [line.strip() for line in advisory.split("\n") if line.strip()]
 
-    for line in advisory.split("\n"):
-        stripped = line.strip()
+    for i, line in enumerate(lines):
+        if "CASE CLASSIFICATION" in line.upper():
+            if i + 1 < len(lines):
+                next_line = lines[i + 1].strip("* ").strip()
+                if next_line:
+                    return next_line
 
-        if "**CASE CLASSIFICATION**" in stripped or stripped.upper() == "CASE CLASSIFICATION":
-            found_section = True
-            continue
+    for line in lines[:5]:
+        cleaned = line.strip("* ").strip()
+        if cleaned and "CASE CLASSIFICATION" not in cleaned.upper():
+            return cleaned
 
-        if found_section:
-            if not stripped:
-                continue
-            if stripped.startswith("**") and stripped.endswith("**"):
-                break
-            classification = stripped
-            break
-
-    return classification
+    return ""

@@ -14,7 +14,6 @@ def ollama_chat(model: str, system: str, messages: list, max_tokens: int = 4096)
         model=model,
         messages=full_messages,
         options={"num_predict": max_tokens,
-                 "temperature": 0.2,
                  },
     )
     return response["message"]["content"]
