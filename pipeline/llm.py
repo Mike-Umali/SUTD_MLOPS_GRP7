@@ -3,8 +3,18 @@ LLM backend abstraction — Claude (Anthropic) or Ollama (local/offline).
 """
 
 
-def ollama_chat(model: str, system: str, messages: list, max_tokens: int = 4096) -> str:
-    """Send a chat request to a local Ollama model and return response text."""
+def ollama_chat(
+    model: str,
+    system: str,
+    messages: list,
+    max_tokens: int = 4096,
+    temperature: float = 0.3,
+) -> str:
+    """
+    Send a chat request to a local Ollama model and return response text.
+    
+    Temperature: 0.1-0.3 for structured/legal outputs, 0.7-0.9 for creative
+    """
     import ollama as _ollama
     full_messages = []
     if system:
@@ -13,7 +23,12 @@ def ollama_chat(model: str, system: str, messages: list, max_tokens: int = 4096)
     response = _ollama.chat(
         model=model,
         messages=full_messages,
-        options={"num_predict": max_tokens},
+        options={
+            "num_predict": max_tokens,
+            "temperature": temperature,
+            "top_p": 0.9,
+            "top_k": 40,
+        },
     )
     return response["message"]["content"]
 

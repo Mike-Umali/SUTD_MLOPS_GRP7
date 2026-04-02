@@ -147,7 +147,7 @@ Provide your expert analysis. If this query is not within your domain, state tha
             model=ollama_model,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}],
-            max_tokens=600,
+            max_tokens=2000,
         )
     else:
         response = client.messages.create(

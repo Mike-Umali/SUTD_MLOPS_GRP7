@@ -133,7 +133,7 @@ def _run_manager_ollama(user_query: str, ollama_model: str) -> dict:
         model=ollama_model,
         system=system,
         messages=[{"role": "user", "content": f"Query: {user_query}"}],
-        max_tokens=150,
+        max_tokens=500,
     )
 
     # Extract the JSON array from the response

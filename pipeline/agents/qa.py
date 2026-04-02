@@ -73,7 +73,7 @@ Produce the final legal advisory note."""
             model=ollama_model,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
-            max_tokens=1200,
+            max_tokens=4000,
         )
     else:
         response = client.messages.create(
