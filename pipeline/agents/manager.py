@@ -34,7 +34,7 @@ def run_manager_agent(
     user_query: str,
     client: anthropic.Anthropic = None,
     backend: str = "claude",
-    ollama_model: str = "llama3.1:8b",
+    ollama_model: str = "qwen2.5:7b",
 ) -> dict:
     """
     Manager agent: routes the query to relevant expert agents.
@@ -116,6 +116,21 @@ Be selective — only consult experts relevant to the query."""
 
 # ── Ollama mode ───────────────────────────────────────────────────────────────
 
+_KEYWORD_DOMAINS = {
+    "drug_offences": ["drug", "heroin", "cannabis", "meth", "trafficking", "mda", "diamorphine", "opium", "cocaine", "possession"],
+    "sexual_offences": ["rape", "sexual", "molest", "outrage", "voyeur", "intimate", "minor", "exploitation"],
+    "violent_crimes": ["murder", "homicide", "hurt", "assault", "grievous", "robbery", "kidnap", "stab", "kill", "death"],
+    "property_financial": ["theft", "cheat", "cbt", "fraud", "money laundering", "corruption", "bribery", "forgery", "extortion"],
+    "regulatory": ["road", "traffic", "immigration", "company", "workplace", "computer misuse", "customs", "drink driving"],
+}
+
+
+def _keyword_domains(query: str) -> list:
+    """Return domains triggered by keywords in the query."""
+    q = query.lower()
+    return [d for d, kws in _KEYWORD_DOMAINS.items() if any(kw in q for kw in kws)]
+
+
 def _run_manager_ollama(user_query: str, ollama_model: str) -> dict:
     from pipeline.llm import ollama_chat
 
@@ -144,6 +159,11 @@ def _run_manager_ollama(user_query: str, ollama_model: str) -> dict:
             domains = json.loads(match.group())
         except json.JSONDecodeError:
             pass
+
+    # Keyword fallback — ensure domain is included even if model missed it
+    for d in _keyword_domains(user_query):
+        if d not in domains:
+            domains.append(d)
 
     # Ensure required domains and strip any invalid ones
     for required in ("sentencing", "criminal_procedure"):

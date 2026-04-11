@@ -13,9 +13,14 @@ def ollama_chat(model: str, system: str, messages: list, max_tokens: int = 4096)
     response = _ollama.chat(
         model=model,
         messages=full_messages,
-        options={"num_predict": max_tokens},
+        options={
+            "num_predict": max_tokens,
+            "repeat_penalty": 1.6,
+            "repeat_last_n": 512,
+            "temperature": 0.3,
+        },
     )
-    return response["message"]["content"]
+    return response.message.content
 
 
 def ollama_available() -> bool:
@@ -33,6 +38,6 @@ def list_ollama_models() -> list:
     try:
         import ollama as _ollama
         result = _ollama.list()
-        return [m["name"] for m in result.get("models", [])]
+        return [m.model for m in result.models]
     except Exception:
         return []

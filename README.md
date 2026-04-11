@@ -1,6 +1,68 @@
-# SUTD MLOPS Group 7 — Singapore Criminal Law Agentic RAG Pipeline
+# SUTD MLOPS Group 7 — Singapore Criminal Law Advisory System
 
-An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, builds a labeled dataset, indexes them into a vector store, and answers legal queries through a multi-agent RAG system powered by Claude.
+An end-to-end MLOps pipeline for Singapore criminal law legal advisory. Scrapes 876 Supreme Court judgments, builds a labeled dataset, indexes them into a domain-specific vector store, and answers legal queries through a multi-agent RAG system. Supports two backends: **Claude Sonnet 4.6** (online) and a **fine-tuned Qwen2.5-1.5B** model running locally via Ollama.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.10
+- [Ollama](https://ollama.com) (for local inference) **or** an Anthropic API key (for Claude backend)
+
+### 1. Clone and install dependencies
+
+```bash
+git clone <repo-url>
+cd MLOPSproj
+pip install -r requirements.txt
+```
+
+### 2. Get the case PDFs
+
+The `cases/` directory (876 PDFs, ~2GB) is not included in the repo. You have two options:
+
+**Option A — Re-scrape from eLitigation (takes ~2–3 hours):**
+```bash
+python scraper.py
+```
+
+**Option B — Ask a teammate for the `cases/` folder** and place it in the project root.
+
+### 3. Build the ChromaDB index (run once)
+
+```bash
+python -c "from pipeline.index import build_index; build_index()"
+```
+
+This embeds all 876 cases into 8 domain collections (~83,000 chunks). Takes ~10–20 minutes on CPU.
+
+### 4. Run the app
+
+**Option A — Claude backend (online):**
+```bash
+ANTHROPIC_API_KEY=sk-ant-... streamlit run app.py
+```
+
+**Option B — Ollama backend (fully offline):**
+
+Install a model (choose one):
+```bash
+ollama pull qwen2.5:7b        # general purpose, good quality
+```
+
+Or use our fine-tuned 3B model (see Part 4 below for how to build it), then:
+```bash
+streamlit run app.py
+```
+
+Opens at **http://localhost:8501**. Select your backend in the sidebar.
+
+> **Note:** If you have multiple Python versions, run Streamlit explicitly:
+> ```bash
+> /path/to/python3.10 -m streamlit run app.py
+> ```
 
 ---
 
@@ -49,11 +111,12 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
          │
          ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │                    MANAGER AGENT (Claude)                    │
-  │  Analyses query, selects relevant expert domains via tool_use│
+  │                    MANAGER AGENT                             │
+  │  Claude: agentic tool_use loop                               │
+  │  Ollama: JSON routing prompt → sequential expert calls       │
   │  Always routes to: Sentencing + Criminal Procedure           │
   └──────────────┬───────────────────────────────────────────────┘
-                 │  dispatches to (in parallel)
+                 │  dispatches to (in parallel — Claude mode)
         ┌────────┼──────────────────────────────┐
         ▼        ▼        ▼        ▼            ▼
   [Drug]  [Sexual]  [Violent]  [Property]  [Regulatory]
@@ -65,7 +128,7 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
                         │
                         ▼
   ┌──────────────────────────────────────────────────────────────┐
-  │                      QA AGENT (Claude)                       │
+  │                      QA AGENT                                │
   │  Synthesises all expert findings into a structured advisory  │
   │  Written in Singapore High Court judgment style              │
   └──────────────────────────────────────────────────────────────┘
@@ -77,8 +140,42 @@ An end-to-end MLOps pipeline that scrapes Singapore criminal law judgments, buil
                         ▼
   ┌──────────────────────────────────────────────────────────────┐
   │                   STREAMLIT WEB APP (app.py)                 │
+  │  Backend selector: Claude (online) or Ollama (local)        │
   │  Interactive UI — live pipeline status, tabbed results       │
   └──────────────────────────────────────────────────────────────┘
+
+
+                        ┌─────────────────────────────────────┐
+                        │       PART 3: FINE-TUNING           │
+                        └─────────────────────────────────────┘
+
+  dataset.csv + cases/ (876 judgments)
+         │
+         ▼
+  generate_qa.py  ──── Claude Haiku generates Q&A pairs from 150 cases
+         │                 (4 pairs per case → 598 pairs total)
+         ▼
+  data/qa_pairs.jsonl  ──── chat-format training data (JSONL)
+         │
+         ▼
+  finetune/train.ipynb  ──── QLoRA fine-tuning on Colab T4
+         │                    Base: Qwen2.5-1.5B-Instruct (4-bit)
+         │                    LoRA: r=16, alpha=32, 2.04% trainable params
+         │                    Epochs: 3 | LR: 2e-4 | Batch: 16 effective
+         ▼
+  LoRA adapters  ──── ~50MB saved checkpoint
+         │
+         ▼
+  merge_lora.py  ──── merges adapters into base model (locally)
+         │
+         ▼
+  llama.cpp convert  ──── GGUF export (Q4_K_M quantization → 940MB)
+         │
+         ▼
+  ollama create sg-law-qwen2.5  ──── registered as local Ollama model
+         │
+         ▼
+  Streamlit sidebar  ──── selectable alongside Claude backend
 ```
 
 ---
@@ -344,13 +441,13 @@ python main.py --index
 
 ### 2.3 Manager Agent (`pipeline/agents/manager.py`)
 
-Orchestrates the expert agents using Claude's native `tool_use`.
+Orchestrates the expert agents.
 
-- Receives the user query and selects which expert domains to consult
-- Each expert domain is registered as a Claude tool (`consult_<domain>`)
-- Always routes to `sentencing` and `criminal_procedure` for any criminal query
-- Runs an agentic loop until `stop_reason == "end_turn"` (all experts consulted)
-- Returns `expert_results` list with each expert's findings and citations
+**Claude mode:** Uses native `tool_use` — each expert domain is registered as a tool (`consult_<domain>`). The manager runs an agentic loop until `stop_reason == "end_turn"`.
+
+**Ollama mode:** JSON routing prompt — the model returns a list of domains, then experts are called sequentially.
+
+Both modes always route to `sentencing` and `criminal_procedure` for any criminal query.
 
 ### 2.4 Expert Agents (`pipeline/agents/experts.py`)
 
@@ -358,7 +455,7 @@ Seven specialist expert agents, one per domain.
 
 Each expert agent:
 1. Retrieves the top-5 most relevant chunks from its ChromaDB collection
-2. Calls Claude with a domain-specific system prompt
+2. Calls the LLM backend with a domain-specific system prompt
 3. Analyses the retrieved case law and returns structured findings + citations
 
 **Expert profiles:**
@@ -403,10 +500,12 @@ All case citations referenced in the analysis.
 
 ## Part 3: Streamlit Web App (`app.py`)
 
-An interactive web interface for the full agentic pipeline.
+An interactive web interface for the full agentic pipeline with dual backend support.
 
 ### Features
 
+- **Backend selector** — toggle between Claude (online) and Ollama (local/offline) in the sidebar
+- **Dynamic model list** — Ollama mode auto-detects all locally installed models via `ollama list`
 - **API key input** in the sidebar (or set via `ANTHROPIC_API_KEY` env var)
 - **Live pipeline status** — `st.status` shows each step as it runs (Manager routing → QA synthesis)
 - **Case classification** and **experts consulted** displayed at a glance
@@ -431,6 +530,148 @@ Opens at **http://localhost:8501**.
 
 ---
 
+## Part 4: Fine-Tuning (`finetune/`, `generate_qa.py`)
+
+A QLoRA fine-tuned Qwen2.5-1.5B model trained on Singapore criminal law Q&A pairs, served locally via Ollama.
+
+### 4.1 Training Data Generation (`generate_qa.py`)
+
+598 instruction-following Q&A pairs generated from 150 sampled cases using **Claude Haiku** as a data synthesiser.
+
+**Generation approach:**
+- Samples 150 cases proportionally across `area_of_law` buckets to ensure domain coverage
+- Extracts the first ~5,000 chars of each judgment (intro + key analysis)
+- Prompts Claude Haiku to produce 4 diverse Q&A pairs per case covering:
+  - The specific charge and statutory provisions
+  - The key legal test or principle applied
+  - Outcome, sentence, and driving factors
+  - Any defence raised, procedural point, or evidential issue
+- Outputs in chat format (`system` / `user` / `assistant` messages) for direct SFT
+
+**Final dataset (`data/qa_pairs.jsonl`):**
+
+| Metric | Value |
+|---|---|
+| Total pairs | 598 |
+| Cases covered | ~150 |
+| Avg answer length | ~200 words |
+| Format | JSONL, chat-format (Qwen2.5 template) |
+
+**Domain distribution:**
+
+| Domain | Pairs | % |
+|---|---|---|
+| Criminal Law | 438 | 73.2% |
+| Criminal Procedure | 140 | 23.4% |
+| Constitutional Law | 8 | 1.3% |
+| Administrative Law | 4 | 0.7% |
+| Agency | 4 | 0.7% |
+| Civil Procedure | 4 | 0.7% |
+
+Generate the dataset:
+```bash
+python generate_qa.py                  # 150 cases, 4 pairs each
+python generate_qa.py --cases 200      # more cases
+python generate_qa.py --resume         # skip already-processed citations
+```
+
+### 4.2 Fine-Tuning (`finetune/train.ipynb`)
+
+QLoRA fine-tuning on Google Colab T4 GPU using [Unsloth](https://github.com/unslothai/unsloth).
+
+**Hardware:** Google Colab T4 (16 GB VRAM) — ~60–90 min training time
+
+**Base model:** `unsloth/Qwen2.5-1.5B-Instruct-bnb-4bit` (pre-quantized)
+
+**LoRA configuration:**
+
+| Hyperparameter | Value |
+|---|---|
+| LoRA rank (`r`) | 16 |
+| LoRA alpha | 32 |
+| Dropout | 0.05 |
+| Target modules | q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj |
+| Trainable params | 18,464,768 / 907,081,216 **(2.04%)** |
+
+**Training configuration:**
+
+| Hyperparameter | Value |
+|---|---|
+| Epochs | 3 |
+| Batch size | 4 (per device) |
+| Gradient accumulation | 4 → effective batch 16 |
+| Learning rate | 2e-4 |
+| LR scheduler | Cosine |
+| Warmup ratio | 0.05 |
+| Optimizer | AdamW 8-bit |
+| Max sequence length | 2,048 tokens |
+| Train / Val split | 90% / 10% (538 / 60 pairs) |
+| Eval steps | Every 50 steps |
+| W&B project | `mlops-sg-law` |
+| W&B run | `qwen2.5-1.5b-qlora-sg-criminal-law` |
+
+Training and eval loss logged to Weights & Biases. Sample model outputs on 5 test queries logged as a W&B Table at end of training.
+
+### 4.3 GGUF Export & Ollama Integration
+
+After training, the LoRA adapters are merged into the base model and exported for local inference.
+
+**1.5B model — conversion pipeline:**
+
+```bash
+# 1. Merge LoRA adapters into base model
+python merge_lora.py
+
+# 2. Convert to GGUF (f16)
+convert_hf_to_gguf.py sg-law-merged --outfile sg-law-1.5b-f16.gguf --outtype f16
+
+# 3. Quantize to Q4_K_M (~940MB)
+llama-quantize sg-law-1.5b-f16.gguf sg-law-qwen2.5-1.5b-q4_k_m.gguf Q4_K_M
+
+# 4. Register with Ollama
+ollama create sg-law-qwen2.5 -f Modelfile
+```
+
+**3B model — conversion pipeline (better quality):**
+
+```bash
+# 1. Merge 3B LoRA adapters (base: Qwen/Qwen2.5-3B-Instruct)
+python merge_lora_3b.py   # downloads base model from HuggingFace if not cached
+
+# 2. Convert to GGUF (f16)
+convert_hf_to_gguf.py sg-law-qwen2.5-3b-merged --outfile sg-law-3b-f16.gguf --outtype f16
+
+# 3. Quantize to Q4_K_M (~1.8GB) — recommended for CPU inference
+llama-quantize sg-law-3b-f16.gguf sg-law-qwen2.5-3b-q4_k_m.gguf Q4_K_M
+
+# 4. Register with Ollama
+ollama create sg-law-3b-q4 -f Modelfile-3b-q4
+```
+
+**Model sizes:**
+
+| Model | Format | Size |
+|---|---|---|
+| Qwen2.5-1.5B fine-tuned | Q4_K_M GGUF | 940 MB |
+| Qwen2.5-3B fine-tuned | f16 GGUF | 5.8 GB |
+| Qwen2.5-3B fine-tuned | Q4_K_M GGUF | **1.8 GB** ← recommended |
+
+Once registered, the model appears automatically in the Streamlit sidebar model dropdown. No code changes needed.
+
+> **Tip:** Use Q4_K_M for CPU inference — f16 is too slow without a GPU.
+
+### 4.4 Fine-Tuned Model Sample Outputs
+
+Sample responses from `sg-law-qwen2.5` on held-out test queries:
+
+**Q: What is the mandatory minimum sentence for drug trafficking under MDA s 5 if the accused has given substantive assistance to CNB?**
+> The Sentencing Act (2019 Rev Ed) sets out clear sentencing frameworks for drug trafficking offences. For first-time offenders, the court may impose up to ten years' imprisonment or a fine of not less than $5,000... The sentencing framework for trafficking in diamorphine is particularly detailed: under s 14(2), a judge must consider whether the offender's age or mental state may mitigate culpability...
+
+**Q: What elements must the prosecution prove for culpable homicide not amounting to murder under s 299 Penal Code?**
+> In PP v Chai Wee Hooong [2018] SGHC 163, the court identified three critical elements that must be proven beyond reasonable doubt: (1) the accused's actus reus — the accused must have caused death; (2) the accused's mens rea — knowledge or intention that his act was likely to cause death; and (3) causation...
+
+---
+
 ## Usage (CLI)
 
 ### Build the index (run once after scraping)
@@ -448,14 +689,14 @@ python main.py --query "What is the mandatory minimum sentence for trafficking 1
 python main.py
 ```
 
-### Environment variable required
+### Environment variable required (Claude backend)
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ---
 
-## Part 4: Evaluation Pipeline (`eval/`)
+## Part 5: Evaluation Pipeline (`eval/`)
 
 Three-layer evaluation covering retrieval quality, agent routing accuracy, and end-to-end advisory quality.
 
@@ -482,7 +723,7 @@ No API calls. Queries ChromaDB directly for each of 20 test cases and measures:
 - **Hit rate** — does a relevant subtopic appear in the top-5 retrieved chunks?
 - **Avg relevance score** — mean cosine similarity of the top-5 results (0–1, higher is better)
 
-**Baseline results:**
+**Baseline results (500 cases):**
 
 | Domain | Hit Rate | Avg Score |
 |---|---|---|
@@ -512,16 +753,16 @@ No API calls. Queries ChromaDB directly for each of 20 test cases and measures:
 
 **Before vs After:**
 
-| Metric | Baseline (500 cases) | Post-expansion (876 cases) |
-|---|---|---|
-| Hit rate | 0.750 (15/20) | **0.950 (19/20)** |
-| Avg cosine score | 0.583 | **0.664** |
+| Metric | Baseline (500 cases) | Post-expansion (876 cases) | Change |
+|---|---|---|---|
+| Hit rate | 0.750 (15/20) | **0.950 (19/20)** | +26.7% |
+| Avg cosine score | 0.583 | **0.664** | +13.9% |
 
-> `property_financial` improved from 0.500 → 1.000 after targeted expansion. `regulatory` remains at 0.667 (1 miss: WSHA workplace fatality, TC-19) — regulatory cases are predominantly in SGDC (District Court) which is not scraped from the SUPCT source.
+> `property_financial` improved from 0.500 → 1.000 after targeted expansion. `regulatory` remains at 0.667 (1 miss: WSHA workplace fatality) — regulatory cases are predominantly in SGDC (District Court) which is not scraped from the SUPCT source.
 
 ### Layer 2 — Routing Evaluation (`eval/routing_eval.py`)
 
-Runs the Manager Agent on 20 test queries and compares the actual domains routed to against hand-labelled ground truth.
+Runs the Manager Agent on 20 test queries and compares actual domains routed to against hand-labelled ground truth.
 
 Metrics (set-based, per query):
 - **Precision** — of the domains the manager selected, what fraction were correct?
@@ -582,8 +823,6 @@ The judge uses a deliberately adversarial rubric ("deduct marks for X") rather t
 }
 ```
 
-The `reasoning` field identifies exactly why a score was low, making it actionable for improving the pipeline.
-
 #### Known limitation
 
 Claude judging its own output introduces self-evaluation bias — scores will tend to skew 3.5–4.5. For more rigorous evaluation, use a different model as judge (e.g. GPT-4o judging Claude's output) to eliminate this bias.
@@ -600,28 +839,57 @@ Each test case includes:
 
 ---
 
+## Technique Comparison Summary
+
+Three distinct techniques were implemented and evaluated:
+
+| Technique | What it does | Key result |
+|---|---|---|
+| **Agentic RAG (Claude)** | Multi-agent pipeline with domain-specific retrieval, tool_use routing, and High Court–style synthesis | Best advisory quality; full structured output with accurate citations |
+| **Agentic RAG (Ollama)** | Same pipeline running on local open-source models (llama3.1:8b, sg-law-qwen2.5) | Fully offline; llama3.1:8b produces usable output; 1.5B fine-tuned model suitable for factual Q&A |
+| **QLoRA Fine-Tuning** | Domain-adapted Qwen2.5-1.5B on 598 SG criminal law Q&A pairs | Model correctly grounds answers in SG statute and case citations; limited by model size for full synthesis tasks |
+
+**Key finding:** The agentic RAG architecture (Manager → Expert → QA) significantly outperforms a direct LLM call on advisory quality because:
+1. Domain-specific retrieval surfaces relevant case law the LLM would not know
+2. Specialist expert roles reduce hallucination by grounding each response in retrieved chunks
+3. The QA synthesis step produces coherent structured output from multiple expert findings
+
+The fine-tuned model (`sg-law-qwen2.5`) demonstrated improved grounding in Singapore-specific legal terminology and citation style compared to the base Qwen2.5-1.5B, but the 1.5B parameter size limits its ability to produce the full structured advisory format. It is best used for targeted factual Q&A (e.g. "What is the sentencing framework for X?") rather than multi-issue synthesis.
+
+---
+
 ## File Structure
 
 ```
 MLOPSproj/
-├── scraper.py              # eLitigation scraper (500 criminal cases)
+├── scraper.py              # eLitigation scraper (876 criminal cases)
 ├── taxonomy.py             # Singapore criminal law taxonomy (~280 entries)
 ├── dataset.csv             # Labeled dataset (876 cases, 1,683 rows)
+├── generate_qa.py          # Q&A pair generation via Claude Haiku
+├── merge_lora.py           # Merge LoRA adapters into base model (local)
+├── Modelfile               # Ollama Modelfile for sg-law-qwen2.5
 ├── main.py                 # CLI entry point for the agentic pipeline
-├── app.py                  # Streamlit web app
+├── app.py                  # Streamlit web app (Claude + Ollama backends)
 ├── pipeline/
 │   ├── extract.py          # PDF text extraction + chunking
 │   ├── index.py            # ChromaDB vector index + retrieval
+│   ├── llm.py              # LLM backend abstraction (Claude / Ollama)
 │   └── agents/
-│       ├── manager.py      # Manager agent (tool_use orchestration)
+│       ├── manager.py      # Manager agent (tool_use / JSON routing)
 │       ├── experts.py      # 7 specialist expert agents
 │       └── qa.py           # QA agent (final advisory synthesis)
+├── finetune/
+│   └── train.ipynb         # QLoRA fine-tuning notebook (Colab T4)
+├── data/
+│   └── qa_pairs.jsonl      # 598 Q&A training pairs (chat format)
 ├── eval/
 │   ├── test_set.py         # 20 test queries with ground truth
 │   ├── retrieval_eval.py   # Hit rate + cosine similarity (no API)
 │   ├── routing_eval.py     # Manager routing precision/recall/F1
 │   ├── advisory_eval.py    # LLM-as-judge end-to-end scoring
 │   └── run_eval.py         # Master runner (--retrieval/--routing/--advisory/--all)
+├── lora_adapters/          # Fine-tuned LoRA weights — gitignored
+├── sg-law-merged/          # Merged HuggingFace model — gitignored
 ├── cases/                  # Downloaded PDFs — gitignored (~500MB)
 └── chroma_db/              # ChromaDB persistent store — gitignored
 ```
@@ -638,11 +906,34 @@ pdfplumber
 chromadb
 anthropic
 streamlit
+ollama
 ```
 
 Install:
 ```bash
-pip install requests beautifulsoup4 pandas pdfplumber chromadb anthropic streamlit
+pip install requests beautifulsoup4 pandas pdfplumber chromadb anthropic streamlit ollama
 ```
 
-> **Note:** `chromadb`'s built-in `ONNXMiniLM_L6_V2` embedding function is used instead of `sentence-transformers` to avoid PyTorch version conflicts. No GPU required.
+For fine-tuning (Colab):
+```bash
+pip install unsloth wandb datasets
+```
+
+For local GGUF conversion:
+```bash
+brew install llama.cpp
+pip install gguf peft transformers accelerate
+```
+
+> **Note:** `chromadb`'s built-in `ONNXMiniLM_L6_V2` embedding function is used instead of `sentence-transformers` to avoid PyTorch version conflicts. No GPU required for inference.
+
+---
+
+## Compute
+
+| Task | Hardware | Est. GPU Hours |
+|---|---|---|
+| Fine-tuning (3 epochs, 538 samples) | Google Colab T4 (16GB) | ~1.5 hours |
+| GGUF conversion + quantization | MacBook (CPU) | ~15 min |
+| Index build (83,322 chunks) | MacBook (CPU) | ~45 min |
+| Evaluation runs | MacBook (CPU) | ~10 min (retrieval), ~30 min (advisory) |

@@ -4,3 +4,12 @@ __pycache__/
 *.pyc
 .DS_Store
 .env
+*.gguf
+llama.cpp/
+lora_adapters/
+sg-law-merged/
+sg-law-qwen2.5-3b-lora/
+sg-law-qwen2.5-3b-merged/
+sg-law-qwen2.5-1.5b-lora/
+data/
+merge_lora_3b.py

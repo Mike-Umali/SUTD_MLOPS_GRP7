@@ -99,7 +99,7 @@ def run_expert_agent(
     client: anthropic.Anthropic = None,
     n_results: int = 5,
     backend: str = "claude",
-    ollama_model: str = "llama3.1:8b",
+    ollama_model: str = "qwen2.5:7b",
 ) -> dict:
     """
     Run a single expert agent:

@@ -22,9 +22,9 @@ with st.sidebar:
 
     backend = st.radio(
         "Backend",
-        options=["Claude (online)", "Ollama (local)"],
+        options=["Ollama (local)", "Claude (online)"],
         index=0,
-        help="Claude uses the Anthropic API. Ollama runs fully offline on your machine.",
+        help="Ollama runs fully offline using an open-source model. Claude uses the Anthropic API.",
     )
     use_ollama = backend == "Ollama (local)"
 
@@ -44,11 +44,11 @@ with st.sidebar:
                     help="Select a locally available Ollama model.",
                 )
             else:
-                st.warning("No models found. Run: `ollama pull llama3.1:8b`")
-                ollama_model = st.text_input("Model name", value="llama3.1:8b")
+                st.warning("No models found. Run: `ollama pull qwen2.5:7b`")
+                ollama_model = st.text_input("Model name", value="qwen2.5:7b")
         else:
             st.error("Ollama not reachable. Start it with: `ollama serve`")
-            ollama_model = st.text_input("Model name", value="llama3.1:8b")
+            ollama_model = st.text_input("Model name", value="qwen2.5:7b")
 
         api_key = None
         client = None
@@ -133,7 +133,7 @@ if run_btn:
                 user_query=query,
                 client=client,
                 backend="ollama" if use_ollama else "claude",
-                ollama_model=ollama_model or "llama3.1:8b",
+                ollama_model=ollama_model or "qwen2.5:7b",
             )
         except Exception as e:
             status.update(label="Manager Agent failed", state="error")
@@ -150,7 +150,7 @@ if run_btn:
                 expert_results=manager_output["expert_results"],
                 client=client,
                 backend="ollama" if use_ollama else "claude",
-                ollama_model=ollama_model or "llama3.1:8b",
+                ollama_model=ollama_model or "qwen2.5:7b",
             )
         except Exception as e:
             status.update(label="QA Agent failed", state="error")

@@ -9,6 +9,9 @@ from pipeline.extract import iter_case_chunks
 
 CHROMA_DIR = "chroma_db"
 
+_embedding_fn = None
+_chroma_client = None
+
 DOMAINS = [
     "drug_offences",
     "sexual_offences",
@@ -22,11 +25,17 @@ DOMAINS = [
 
 
 def get_client():
-    return chromadb.PersistentClient(path=CHROMA_DIR)
+    global _chroma_client
+    if _chroma_client is None:
+        _chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
+    return _chroma_client
 
 
 def get_embedding_fn():
-    return ONNXMiniLM_L6_V2()
+    global _embedding_fn
+    if _embedding_fn is None:
+        _embedding_fn = ONNXMiniLM_L6_V2()
+    return _embedding_fn
 
 
 def get_collection(domain: str, client=None, embedding_fn=None):
