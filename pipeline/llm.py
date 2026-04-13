@@ -75,9 +75,9 @@ def _load_hf_model(model_path: str):
     from transformers import AutoTokenizer, AutoModelForCausalLM
 
     # Check if this is a LoRA adapter repo
+    import json, tempfile, shutil, os
     try:
-        from huggingface_hub import hf_hub_download
-        import json
+        from huggingface_hub import hf_hub_download, snapshot_download
         cfg_path = hf_hub_download(repo_id=model_path, filename="adapter_config.json")
         with open(cfg_path) as f:
             adapter_cfg = json.load(f)
@@ -90,8 +90,6 @@ def _load_hf_model(model_path: str):
 
     print(f"[Transformers] Loading model: {base_model} ...")
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
-    # Load in fp16 — torch_dtype=float16 overrides any quantization_config in the model config
-    # (bitsandbytes is not supported on Blackwell/sm_120)
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
         torch_dtype=torch.float16,
@@ -102,8 +100,22 @@ def _load_hf_model(model_path: str):
     if is_lora:
         from peft import PeftModel
         print(f"[Transformers] Applying LoRA adapter: {model_path} ...")
-        model = PeftModel.from_pretrained(model, model_path, is_trainable=False)
+
+        # Download the full adapter repo to a temp dir, strip quantization_config
+        # so PEFT uses fp16 LoRA layers instead of bitsandbytes (unsupported on sm_120)
+        adapter_dir = snapshot_download(repo_id=model_path)
+        tmp_dir = tempfile.mkdtemp()
+        shutil.copytree(adapter_dir, tmp_dir, dirs_exist_ok=True)
+        cleaned_cfg_path = os.path.join(tmp_dir, "adapter_config.json")
+        with open(cleaned_cfg_path) as f:
+            cfg = json.load(f)
+        cfg.pop("quantization_config", None)
+        with open(cleaned_cfg_path, "w") as f:
+            json.dump(cfg, f)
+
+        model = PeftModel.from_pretrained(model, tmp_dir, is_trainable=False)
         model = model.merge_and_unload()
+        shutil.rmtree(tmp_dir, ignore_errors=True)
         print(f"[Transformers] LoRA merged into base model (fp16).")
 
     model.eval()
