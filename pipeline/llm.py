@@ -113,10 +113,13 @@ def _load_hf_model(model_path: str):
     except Exception as _e:
         print(f"[Transformers] Warning: could not patch config.json: {_e}")
 
+    # Load on CPU first — avoids CUDA init.normal_ kernel errors on Blackwell (sm_120).
+    # Weights are copied to GPU after all loading is complete (simple copy_, no init needed).
+    print(f"[Transformers] Loading weights on CPU ...")
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
         torch_dtype=torch.float16,
-        device_map="auto",
+        device_map="cpu",
         trust_remote_code=True,
     )
 
@@ -137,10 +140,14 @@ def _load_hf_model(model_path: str):
             json.dump(cfg, f)
 
         model = PeftModel.from_pretrained(model, tmp_dir, is_trainable=False)
-        # Do NOT call merge_and_unload() — it triggers bitsandbytes dequantization
-        # which fails on Blackwell. PeftModel inference works correctly without merging.
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        print(f"[Transformers] LoRA adapter applied (fp16, no merge).")
+        print(f"[Transformers] LoRA adapter applied.")
+
+    # Move to GPU after all loading — simple tensor copy, no CUDA init kernels needed
+    if torch.cuda.is_available():
+        print(f"[Transformers] Moving model to GPU ...")
+        model = model.to("cuda")
+        print(f"[Transformers] Model on GPU.")
 
     model.eval()
     _HF_CACHE[model_path] = (tokenizer, model)
