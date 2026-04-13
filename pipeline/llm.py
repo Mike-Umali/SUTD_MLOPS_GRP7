@@ -67,8 +67,9 @@ def transformers_chat(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=False,
-            repetition_penalty=1.3,
+            repetition_penalty=1.5,
             pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
         )
 
     new_tokens = output_ids[0][input_len:]

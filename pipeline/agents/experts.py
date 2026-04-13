@@ -142,21 +142,40 @@ Retrieved Cases:
 Provide your expert analysis. If this query is not within your domain, state that clearly."""
 
     if backend in ("ollama", "transformers"):
+        local_system = f"""You are the {profile['name']} for Singapore criminal law. Answer concisely in under 200 words.
+
+Use ONLY the retrieved cases below. Do not invent cases or statutes.
+
+Format your response exactly as:
+CLASSIFICATION: [one line stating the offence and applicable statute]
+KEY LAW: [the most relevant statute and threshold]
+ANALYSIS: [2-3 sentences citing retrieved cases by citation]
+DEFENCE OPTIONS: [1-2 sentences on available defences or mitigating factors]
+
+Stop after DEFENCE OPTIONS. Do not repeat yourself."""
+
+        local_user = f"""Query: {query}
+
+Retrieved Cases:
+{case_context}
+
+Provide your expert analysis using only the retrieved cases above."""
+
         if backend == "transformers":
             from pipeline.llm import transformers_chat
             findings = transformers_chat(
                 model_path=ollama_model,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-                max_new_tokens=600,
+                system=local_system,
+                messages=[{"role": "user", "content": local_user}],
+                max_new_tokens=400,
             )
         else:
             from pipeline.llm import ollama_chat
             findings = ollama_chat(
                 model=ollama_model,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-                max_tokens=600,
+                system=local_system,
+                messages=[{"role": "user", "content": local_user}],
+                max_tokens=400,
             )
     else:
         response = client.messages.create(
