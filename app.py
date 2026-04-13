@@ -5,6 +5,7 @@ Supports Claude (online) and Ollama (local/offline) backends.
 """
 
 import os
+import traceback
 import streamlit as st
 
 from pipeline.agents.manager import run_manager_agent
@@ -171,6 +172,7 @@ if run_btn:
         except Exception as e:
             status.update(label="Manager Agent failed", state="error")
             st.error(f"Manager Agent error: {e}")
+            st.code(traceback.format_exc())
             st.stop()
 
         experts = manager_output["experts_consulted"]
