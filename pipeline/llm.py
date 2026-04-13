@@ -90,8 +90,18 @@ def _load_hf_model(model_path: str):
 
     print(f"[Transformers] Loading model: {base_model} ...")
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+
+    # Explicitly clear any quantization_config from the model config before loading.
+    # Cached configs can have bitsandbytes settings baked in from prior runs,
+    # and bitsandbytes is incompatible with Blackwell (sm_120).
+    from transformers import AutoConfig
+    model_config = AutoConfig.from_pretrained(base_model, trust_remote_code=True)
+    if hasattr(model_config, "quantization_config"):
+        model_config.quantization_config = None
+
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
+        config=model_config,
         torch_dtype=torch.float16,
         device_map="auto",
         trust_remote_code=True,
