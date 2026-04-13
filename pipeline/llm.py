@@ -91,17 +91,24 @@ def _load_hf_model(model_path: str):
     print(f"[Transformers] Loading model: {base_model} ...")
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
 
-    # Explicitly clear any quantization_config from the model config before loading.
-    # Cached configs can have bitsandbytes settings baked in from prior runs,
-    # and bitsandbytes is incompatible with Blackwell (sm_120).
-    from transformers import AutoConfig
-    model_config = AutoConfig.from_pretrained(base_model, trust_remote_code=True)
-    if hasattr(model_config, "quantization_config"):
-        model_config.quantization_config = None
+    # Patch the cached config.json to remove quantization_config before loading.
+    # bitsandbytes is incompatible with Blackwell (sm_120) — removing this key
+    # forces transformers to load in plain fp16.
+    try:
+        from huggingface_hub import hf_hub_download
+        _cfg_path = hf_hub_download(repo_id=base_model, filename="config.json")
+        with open(_cfg_path) as _f:
+            _raw_cfg = json.load(_f)
+        if "quantization_config" in _raw_cfg:
+            del _raw_cfg["quantization_config"]
+            with open(_cfg_path, "w") as _f:
+                json.dump(_raw_cfg, _f)
+            print(f"[Transformers] Removed quantization_config from cached config.")
+    except Exception as _e:
+        print(f"[Transformers] Warning: could not patch config.json: {_e}")
 
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
-        config=model_config,
         torch_dtype=torch.float16,
         device_map="auto",
         trust_remote_code=True,
