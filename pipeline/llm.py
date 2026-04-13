@@ -46,29 +46,32 @@ def transformers_chat(
     chat_messages.extend(messages)
 
     if hasattr(tokenizer, "apply_chat_template"):
-        input_ids = tokenizer.apply_chat_template(
+        text = tokenizer.apply_chat_template(
             chat_messages,
             add_generation_prompt=True,
-            return_tensors="pt",
-        ).to(model.device)
+            tokenize=False,
+        )
+        inputs = tokenizer(text, return_tensors="pt").to(model.device)
     else:
         # Fallback for models without a chat template
         prompt = (f"System: {system}\n\n" if system else "")
         for msg in messages:
             prompt += f"{msg['role'].capitalize()}: {msg['content']}\n"
         prompt += "Assistant:"
-        input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+    input_len = inputs["input_ids"].shape[-1]
 
     with torch.no_grad():
         output_ids = model.generate(
-            input_ids,
+            **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=False,
             repetition_penalty=1.3,
             pad_token_id=tokenizer.eos_token_id,
         )
 
-    new_tokens = output_ids[0][input_ids.shape[-1]:]
+    new_tokens = output_ids[0][input_len:]
     return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
