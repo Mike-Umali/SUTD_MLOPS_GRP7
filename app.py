@@ -22,15 +22,37 @@ with st.sidebar:
 
     backend = st.radio(
         "Backend",
-        options=["Ollama (local)", "Claude (online)"],
+        options=["GPU (Local Model)", "Ollama (local)", "Claude (online)"],
         index=0,
-        help="Ollama runs fully offline using an open-source model. Claude uses the Anthropic API.",
+        help=(
+            "GPU: runs a HuggingFace model directly on CUDA (recommended on SUTD cluster). "
+            "Ollama: local CPU/GPU inference via Ollama. "
+            "Claude: Anthropic API (requires key)."
+        ),
     )
     use_ollama = backend == "Ollama (local)"
+    use_transformers = backend == "GPU (Local Model)"
 
     st.divider()
 
-    if use_ollama:
+    if use_transformers:
+        import torch
+        gpu_available = torch.cuda.is_available()
+        if gpu_available:
+            gpu_name = torch.cuda.get_device_name(0)
+            st.success(f"GPU detected: {gpu_name}")
+        else:
+            st.warning("No CUDA GPU detected — model will run on CPU (slow).")
+
+        ollama_model = st.text_input(
+            "Model path or HuggingFace ID",
+            value="Qwen/Qwen2.5-3B-Instruct",
+            help="HuggingFace model ID (e.g. Qwen/Qwen2.5-3B-Instruct) or path to a local checkpoint.",
+        )
+        api_key = None
+        client = None
+
+    elif use_ollama:
         from pipeline.llm import ollama_available, list_ollama_models
         ollama_ok = ollama_available()
 
@@ -85,7 +107,12 @@ with st.sidebar:
         "- Regulatory Offences"
     )
     st.divider()
-    st.caption("SUTD MLOPS Group 7 · Claude + ChromaDB" if not use_ollama else "SUTD MLOPS Group 7 · Ollama + ChromaDB")
+    if use_transformers:
+        st.caption("SUTD MLOPS Group 7 · GPU (Transformers) + ChromaDB")
+    elif use_ollama:
+        st.caption("SUTD MLOPS Group 7 · Ollama + ChromaDB")
+    else:
+        st.caption("SUTD MLOPS Group 7 · Claude + ChromaDB")
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -114,7 +141,15 @@ run_btn = st.button(
 # ── Pipeline execution ────────────────────────────────────────────────────────
 
 if run_btn:
-    if not use_ollama:
+    if use_transformers:
+        active_backend = "transformers"
+        label_backend = f"GPU ({ollama_model})"
+    elif use_ollama:
+        active_backend = "ollama"
+        label_backend = f"Ollama ({ollama_model})"
+    else:
+        active_backend = "claude"
+        label_backend = "Claude"
         if not api_key:
             st.error("Please enter your Anthropic API Key in the sidebar.")
             st.stop()
@@ -125,14 +160,12 @@ if run_btn:
     for key in ("manager_output", "qa_output"):
         st.session_state.pop(key, None)
 
-    label_backend = f"Ollama ({ollama_model})" if use_ollama else "Claude"
-
     with st.status(f"Manager Agent routing query to experts ({label_backend})...", expanded=True) as status:
         try:
             manager_output = run_manager_agent(
                 user_query=query,
                 client=client,
-                backend="ollama" if use_ollama else "claude",
+                backend=active_backend,
                 ollama_model=ollama_model or "qwen2.5:7b",
             )
         except Exception as e:
@@ -149,7 +182,7 @@ if run_btn:
                 user_query=query,
                 expert_results=manager_output["expert_results"],
                 client=client,
-                backend="ollama" if use_ollama else "claude",
+                backend=active_backend,
                 ollama_model=ollama_model or "qwen2.5:7b",
             )
         except Exception as e:

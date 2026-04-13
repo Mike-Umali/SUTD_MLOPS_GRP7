@@ -79,8 +79,17 @@ Expert Findings:
 
 Produce the final legal advisory note."""
 
-    if backend == "ollama":
-        from pipeline.llm import ollama_chat
+    if backend in ("ollama", "transformers"):
+        if backend == "transformers":
+            from pipeline.llm import transformers_chat as _local_chat
+            local_chat_fn = lambda sys, msgs, max_tok: _local_chat(
+                model_path=ollama_model, system=sys, messages=msgs, max_new_tokens=max_tok
+            )
+        else:
+            from pipeline.llm import ollama_chat as _local_chat
+            local_chat_fn = lambda sys, msgs, max_tok: _local_chat(
+                model=ollama_model, system=sys, messages=msgs, max_tokens=max_tok
+            )
 
         ollama_system = """You are the Senior QA Legal Advisor for a Singapore criminal law advisory panel. \
 Write a confidential defence counsel advisory note in the authoritative style of a Singapore High Court judgment — \
@@ -125,11 +134,10 @@ Number each step in order of urgency. Be concrete and actionable (e.g. "Apply fo
 
 Rules: every section appears exactly once. Write formally. Do not repeat sentences. Stop after the table."""
 
-        advisory = ollama_chat(
-            model=ollama_model,
-            system=ollama_system,
-            messages=[{"role": "user", "content": user_message}],
-            max_tokens=1200,
+        advisory = local_chat_fn(
+            ollama_system,
+            [{"role": "user", "content": user_message}],
+            1200,
         )
         advisory = _fix_spacing(advisory)
     else:

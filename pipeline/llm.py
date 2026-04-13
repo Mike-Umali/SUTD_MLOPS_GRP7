@@ -1,7 +1,78 @@
 """
-LLM backend abstraction — Claude (Anthropic) or Ollama (local/offline).
+LLM backend abstraction — Claude (Anthropic), Ollama (local), or HuggingFace Transformers (GPU).
 """
 
+# ── HuggingFace Transformers backend ─────────────────────────────────────────
+
+_HF_CACHE: dict = {}  # model_path → (tokenizer, model)
+
+
+def _load_hf_model(model_path: str):
+    """Load (or return cached) a HuggingFace model + tokenizer on CUDA."""
+    if model_path in _HF_CACHE:
+        return _HF_CACHE[model_path]
+
+    import torch
+    from transformers import AutoTokenizer, AutoModelForCausalLM
+
+    print(f"[Transformers] Loading model: {model_path} ...")
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        torch_dtype=torch.float16,
+        device_map="auto",
+        trust_remote_code=True,
+    )
+    model.eval()
+    _HF_CACHE[model_path] = (tokenizer, model)
+    print(f"[Transformers] Model loaded on {next(model.parameters()).device}")
+    return tokenizer, model
+
+
+def transformers_chat(
+    model_path: str,
+    system: str,
+    messages: list,
+    max_new_tokens: int = 1024,
+) -> str:
+    """Run inference on a local HuggingFace model using CUDA."""
+    import torch
+
+    tokenizer, model = _load_hf_model(model_path)
+
+    chat_messages = []
+    if system:
+        chat_messages.append({"role": "system", "content": system})
+    chat_messages.extend(messages)
+
+    if hasattr(tokenizer, "apply_chat_template"):
+        input_ids = tokenizer.apply_chat_template(
+            chat_messages,
+            add_generation_prompt=True,
+            return_tensors="pt",
+        ).to(model.device)
+    else:
+        # Fallback for models without a chat template
+        prompt = (f"System: {system}\n\n" if system else "")
+        for msg in messages:
+            prompt += f"{msg['role'].capitalize()}: {msg['content']}\n"
+        prompt += "Assistant:"
+        input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(model.device)
+
+    with torch.no_grad():
+        output_ids = model.generate(
+            input_ids,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            repetition_penalty=1.3,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+
+    new_tokens = output_ids[0][input_ids.shape[-1]:]
+    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+
+# ── Ollama backend ────────────────────────────────────────────────────────────
 
 def ollama_chat(model: str, system: str, messages: list, max_tokens: int = 4096) -> str:
     """Send a chat request to a local Ollama model and return response text."""

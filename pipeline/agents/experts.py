@@ -141,14 +141,23 @@ Retrieved Cases:
 
 Provide your expert analysis. If this query is not within your domain, state that clearly."""
 
-    if backend == "ollama":
-        from pipeline.llm import ollama_chat
-        findings = ollama_chat(
-            model=ollama_model,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-            max_tokens=600,
-        )
+    if backend in ("ollama", "transformers"):
+        if backend == "transformers":
+            from pipeline.llm import transformers_chat
+            findings = transformers_chat(
+                model_path=ollama_model,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+                max_new_tokens=600,
+            )
+        else:
+            from pipeline.llm import ollama_chat
+            findings = ollama_chat(
+                model=ollama_model,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_message}],
+                max_tokens=600,
+            )
     else:
         response = client.messages.create(
             model=MODEL,

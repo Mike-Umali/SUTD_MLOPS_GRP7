@@ -39,10 +39,10 @@ def run_manager_agent(
     """
     Manager agent: routes the query to relevant expert agents.
     Claude mode: agentic tool_use loop.
-    Ollama mode: JSON routing prompt, then runs experts sequentially.
+    Ollama / Transformers mode: JSON routing prompt, then runs experts sequentially.
     """
-    if backend == "ollama":
-        return _run_manager_ollama(user_query, ollama_model)
+    if backend in ("ollama", "transformers"):
+        return _run_manager_local(user_query, ollama_model, backend)
     return _run_manager_claude(user_query, client)
 
 
@@ -114,7 +114,7 @@ Be selective — only consult experts relevant to the query."""
     }
 
 
-# ── Ollama mode ───────────────────────────────────────────────────────────────
+# ── Local model mode (Ollama or Transformers) ─────────────────────────────────
 
 _KEYWORD_DOMAINS = {
     "drug_offences": ["drug", "heroin", "cannabis", "meth", "trafficking", "mda", "diamorphine", "opium", "cocaine", "possession"],
@@ -131,8 +131,18 @@ def _keyword_domains(query: str) -> list:
     return [d for d, kws in _KEYWORD_DOMAINS.items() if any(kw in q for kw in kws)]
 
 
-def _run_manager_ollama(user_query: str, ollama_model: str) -> dict:
-    from pipeline.llm import ollama_chat
+def _run_manager_local(user_query: str, model_name: str, backend: str) -> dict:
+    """JSON routing for local backends (Ollama or Transformers)."""
+    if backend == "transformers":
+        from pipeline.llm import transformers_chat
+        chat_fn = lambda sys, msgs, max_tok: transformers_chat(
+            model_path=model_name, system=sys, messages=msgs, max_new_tokens=max_tok
+        )
+    else:
+        from pipeline.llm import ollama_chat
+        chat_fn = lambda sys, msgs, max_tok: ollama_chat(
+            model=model_name, system=sys, messages=msgs, max_tokens=max_tok
+        )
 
     domain_list = list(EXPERT_PROFILES.keys())
 
@@ -144,11 +154,10 @@ def _run_manager_ollama(user_query: str, ollama_model: str) -> dict:
         "Reply with ONLY a JSON array, e.g. [\"drug_offences\", \"sentencing\", \"criminal_procedure\"]"
     )
 
-    raw = ollama_chat(
-        model=ollama_model,
-        system=system,
-        messages=[{"role": "user", "content": f"Query: {user_query}"}],
-        max_tokens=150,
+    raw = chat_fn(
+        system,
+        [{"role": "user", "content": f"Query: {user_query}"}],
+        150,
     )
 
     # Extract the JSON array from the response
@@ -174,11 +183,11 @@ def _run_manager_ollama(user_query: str, ollama_model: str) -> dict:
     # Run each expert sequentially
     expert_results = []
     for domain in domains:
-        print(f"  Manager → consulting {domain} expert (Ollama)...")
+        print(f"  Manager → consulting {domain} expert ({backend})...")
         result = run_expert_agent(
             domain, user_query,
-            backend="ollama",
-            ollama_model=ollama_model,
+            backend=backend,
+            ollama_model=model_name,
         )
         expert_results.append(result)
 
