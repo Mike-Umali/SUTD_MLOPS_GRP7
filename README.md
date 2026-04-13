@@ -937,3 +937,98 @@ pip install gguf peft transformers accelerate
 | GGUF conversion + quantization | MacBook (CPU) | ~15 min |
 | Index build (83,322 chunks) | MacBook (CPU) | ~45 min |
 | Evaluation runs | MacBook (CPU) | ~10 min (retrieval), ~30 min (advisory) |
+
+---
+
+## Running on SUTD GPU Cluster
+
+The app supports a **GPU (Local Model)** backend that runs the fine-tuned Qwen2.5-3B model on the SUTD JupyterHub cluster (RTX PRO 6000 Blackwell GPU).
+
+### Cluster details
+
+| Item | Value |
+|---|---|
+| URL | http://192.168.33.15:8888 |
+| GPU | NVIDIA RTX PRO 6000 Blackwell (sm_120) |
+| Python | 3.11 (via `/opt/conda`) |
+| Login | Student ID + password |
+
+### 1. SSH / open a terminal
+
+Log in at http://192.168.33.15:8888, open a terminal from JupyterLab.
+
+### 2. Clone the repo
+
+```bash
+git clone https://github.com/Mike-Umali/SUTD_MLOPS_GRP7.git MLOPSproj
+cd MLOPSproj
+```
+
+### 3. Install dependencies
+
+```bash
+pip install anthropic streamlit pdfplumber chromadb transformers accelerate peft huggingface_hub bitsandbytes --user
+```
+
+> `bitsandbytes` is required because the fine-tuned LoRA was trained with 4-bit QLoRA.
+
+### 4. Upload the ChromaDB index
+
+The ChromaDB index (`chroma_db/`, ~750MB) must be copied to the cluster — it cannot be rebuilt without the original PDFs. From your Mac:
+
+```bash
+# Zip on Mac
+cd ~/Desktop/MLOPSproj
+zip -r chroma_db.zip chroma_db/
+```
+
+Then upload `chroma_db.zip` via JupyterLab → File Browser → Upload, and unzip on the cluster:
+
+```python
+# In a cluster notebook or terminal
+import zipfile
+with zipfile.ZipFile('chroma_db.zip', 'r') as z:
+    z.extractall('.')
+```
+
+### 5. Run the app
+
+```bash
+cd ~/MLOPSproj
+python -m streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+```
+
+Access at: **http://192.168.33.15:8501**
+
+### 6. Select the GPU backend
+
+In the Streamlit sidebar:
+- **Backend:** `GPU (Local Model)`
+- **Model path:** `MikeUmali/sg-law-qwen2.5-3b-lora`
+
+The app will automatically:
+1. Download the base `Qwen/Qwen2.5-3B-Instruct` model from HuggingFace
+2. Download and apply the LoRA adapter (`MikeUmali/sg-law-qwen2.5-3b-lora`)
+3. Merge the adapter into the base model and run on GPU
+
+> First load takes ~2–3 minutes to download models. Subsequent queries are fast.
+
+### Cluster-specific notes
+
+- **llama-cpp-python (GGUF) is not supported** — the cluster's CUDA 12.0 toolkit does not support Blackwell's `compute_120a` architecture. Use the HF Transformers backend instead.
+- **Ollama is not available** on the cluster — use GPU (Local Model) backend.
+- **`streamlit` command may not be on PATH** — always use `python -m streamlit run app.py`.
+- If you get `ModuleNotFoundError` for any package, reinstall with `pip install <package> --user`.
+- The cluster does not persist pip packages between sessions if the home directory is reset — re-run the install command if needed.
+
+### Git pull on cluster
+
+If git pull fails (no credentials), set up a token:
+
+```bash
+git config credential.helper store
+git pull
+# Enter your GitHub username and a Personal Access Token when prompted
+```
+
+Create a token at github.com/settings/tokens with `repo` scope.
