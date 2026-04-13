@@ -134,8 +134,8 @@ def _keyword_domains(query: str) -> list:
 def _run_manager_local(user_query: str, model_name: str, backend: str) -> dict:
     """JSON routing for local backends (Ollama or Transformers)."""
     if backend == "transformers":
-        from pipeline.llm import transformers_chat
-        chat_fn = lambda sys, msgs, max_tok: transformers_chat(
+        from pipeline.llm import local_chat
+        chat_fn = lambda sys, msgs, max_tok: local_chat(
             model_path=model_name, system=sys, messages=msgs, max_new_tokens=max_tok
         )
     else:

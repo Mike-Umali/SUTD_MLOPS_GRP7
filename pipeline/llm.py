@@ -1,6 +1,64 @@
 """
-LLM backend abstraction — Claude (Anthropic), Ollama (local), or HuggingFace Transformers (GPU).
+LLM backend abstraction — Claude (Anthropic), Ollama (local), HuggingFace Transformers (GPU), or llama-cpp (GGUF).
 """
+
+# ── GGUF / llama-cpp backend ──────────────────────────────────────────────────
+
+_LLAMA_CACHE: dict = {}  # model_path → Llama instance
+
+
+def _load_llama(model_path: str):
+    """Load (or return cached) a GGUF model via llama-cpp-python on GPU."""
+    if model_path in _LLAMA_CACHE:
+        return _LLAMA_CACHE[model_path]
+
+    from llama_cpp import Llama
+    print(f"[llama-cpp] Loading GGUF model: {model_path} ...")
+    model = Llama(
+        model_path=model_path,
+        n_gpu_layers=-1,   # offload all layers to GPU
+        n_ctx=4096,
+        verbose=False,
+    )
+    _LLAMA_CACHE[model_path] = model
+    print(f"[llama-cpp] Model loaded.")
+    return model
+
+
+def llama_cpp_chat(
+    model_path: str,
+    system: str,
+    messages: list,
+    max_new_tokens: int = 512,
+) -> str:
+    """Run inference on a GGUF model using llama-cpp-python."""
+    model = _load_llama(model_path)
+
+    chat_messages = []
+    if system:
+        chat_messages.append({"role": "system", "content": system})
+    chat_messages.extend(messages)
+
+    response = model.create_chat_completion(
+        messages=chat_messages,
+        max_tokens=max_new_tokens,
+        temperature=0.3,
+        repeat_penalty=1.5,
+    )
+    return response["choices"][0]["message"]["content"].strip()
+
+
+def local_chat(
+    model_path: str,
+    system: str,
+    messages: list,
+    max_new_tokens: int = 512,
+) -> str:
+    """Auto-route to llama-cpp (GGUF) or transformers (HF) based on model path."""
+    if model_path.endswith(".gguf"):
+        return llama_cpp_chat(model_path, system, messages, max_new_tokens)
+    return transformers_chat(model_path, system, messages, max_new_tokens)
+
 
 # ── HuggingFace Transformers backend ─────────────────────────────────────────
 

@@ -162,8 +162,8 @@ Retrieved Cases:
 Provide your expert analysis using only the retrieved cases above."""
 
         if backend == "transformers":
-            from pipeline.llm import transformers_chat
-            findings = transformers_chat(
+            from pipeline.llm import local_chat
+            findings = local_chat(
                 model_path=ollama_model,
                 system=local_system,
                 messages=[{"role": "user", "content": local_user}],

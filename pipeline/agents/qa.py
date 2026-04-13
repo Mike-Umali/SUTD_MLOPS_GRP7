@@ -81,7 +81,7 @@ Produce the final legal advisory note."""
 
     if backend in ("ollama", "transformers"):
         if backend == "transformers":
-            from pipeline.llm import transformers_chat as _local_chat
+            from pipeline.llm import local_chat as _local_chat
             local_chat_fn = lambda sys, msgs, max_tok: _local_chat(
                 model_path=ollama_model, system=sys, messages=msgs, max_new_tokens=max_tok
             )
