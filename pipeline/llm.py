@@ -120,14 +120,15 @@ def _load_hf_model(model_path: str):
     except Exception as _e:
         print(f"[Transformers] Warning: could not patch config.json: {_e}")
 
-    # Load on CPU first — avoids CUDA init.normal_ kernel errors on Blackwell (sm_120).
-    # Weights are copied to GPU after all loading is complete (simple copy_, no init needed).
+    # Load on CPU first (no device_map) — avoids CUDA init kernel errors on Blackwell (sm_120).
+    # device_map="cpu" creates meta tensors; omitting it loads real tensors on CPU.
+    # Weights are moved to GPU after loading with .to("cuda").
     print(f"[Transformers] Loading weights on CPU ...")
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
         torch_dtype=torch.float16,
-        device_map="cpu",
         trust_remote_code=True,
+        low_cpu_mem_usage=False,  # prevents meta tensors — required for .to("cuda") to work
     )
 
     if is_lora:
