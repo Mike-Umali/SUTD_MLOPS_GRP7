@@ -53,8 +53,8 @@ with st.sidebar:
 
         ollama_model = st.text_input(
             "Model path or HuggingFace ID",
-            value="Qwen/Qwen2.5-3B-Instruct",
-            help="HuggingFace model ID (e.g. Qwen/Qwen2.5-3B-Instruct) or path to a local checkpoint.",
+            value="MikeUmali/sg-law-qwen2.5-3b-lora",
+            help="HuggingFace model ID or path to a local checkpoint.",
         )
         api_key = None
         client = None
