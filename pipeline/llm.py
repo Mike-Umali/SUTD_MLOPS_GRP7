@@ -87,7 +87,14 @@ def _load_hf_model(model_path: str):
         cfg_path = hf_hub_download(repo_id=model_path, filename="adapter_config.json")
         with open(cfg_path) as f:
             adapter_cfg = json.load(f)
-        base_model = adapter_cfg["base_model_name_or_path"]
+        _raw_base = adapter_cfg["base_model_name_or_path"]
+        # If trained on a quantized variant (e.g. unsloth bnb-4bit), use the
+        # standard fp16 base model instead — bitsandbytes not supported on sm_120
+        if "bnb" in _raw_base or "4bit" in _raw_base or "8bit" in _raw_base:
+            base_model = "Qwen/Qwen2.5-3B-Instruct"
+            print(f"[Transformers] Quantized base detected ({_raw_base}), using fp16: {base_model}")
+        else:
+            base_model = _raw_base
         is_lora = True
         print(f"[Transformers] LoRA adapter detected. Base model: {base_model}")
     except Exception:
@@ -136,6 +143,9 @@ def _load_hf_model(model_path: str):
         with open(cleaned_cfg_path) as f:
             cfg = json.load(f)
         cfg.pop("quantization_config", None)
+        # The LoRA was trained on unsloth's 4-bit model — override to the standard
+        # fp16 base model so we can load without bitsandbytes on Blackwell (sm_120)
+        cfg["base_model_name_or_path"] = "Qwen/Qwen2.5-3B-Instruct"
         with open(cleaned_cfg_path, "w") as f:
             json.dump(cfg, f)
 
