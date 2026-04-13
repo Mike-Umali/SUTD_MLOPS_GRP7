@@ -101,8 +101,8 @@ def _load_hf_model(model_path: str):
         from peft import PeftModel
         print(f"[Transformers] Applying LoRA adapter: {model_path} ...")
 
-        # Download the full adapter repo to a temp dir, strip quantization_config
-        # so PEFT uses fp16 LoRA layers instead of bitsandbytes (unsupported on sm_120)
+        # Download adapter repo, strip quantization_config so PEFT uses standard
+        # fp16 LoRA layers — bitsandbytes is incompatible with Blackwell (sm_120)
         adapter_dir = snapshot_download(repo_id=model_path)
         tmp_dir = tempfile.mkdtemp()
         shutil.copytree(adapter_dir, tmp_dir, dirs_exist_ok=True)
@@ -114,9 +114,10 @@ def _load_hf_model(model_path: str):
             json.dump(cfg, f)
 
         model = PeftModel.from_pretrained(model, tmp_dir, is_trainable=False)
-        model = model.merge_and_unload()
+        # Do NOT call merge_and_unload() — it triggers bitsandbytes dequantization
+        # which fails on Blackwell. PeftModel inference works correctly without merging.
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        print(f"[Transformers] LoRA merged into base model (fp16).")
+        print(f"[Transformers] LoRA adapter applied (fp16, no merge).")
 
     model.eval()
     _HF_CACHE[model_path] = (tokenizer, model)
