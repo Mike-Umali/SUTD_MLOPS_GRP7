@@ -66,21 +66,44 @@ _HF_CACHE: dict = {}  # model_path → (tokenizer, model)
 
 
 def _load_hf_model(model_path: str):
-    """Load (or return cached) a HuggingFace model + tokenizer on CUDA."""
+    """Load (or return cached) a HuggingFace model + tokenizer on CUDA.
+    Supports plain HF models and LoRA adapter repos (detected via adapter_config.json)."""
     if model_path in _HF_CACHE:
         return _HF_CACHE[model_path]
 
     import torch
     from transformers import AutoTokenizer, AutoModelForCausalLM
 
-    print(f"[Transformers] Loading model: {model_path} ...")
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    # Check if this is a LoRA adapter repo
+    try:
+        from huggingface_hub import hf_hub_download
+        import json
+        cfg_path = hf_hub_download(repo_id=model_path, filename="adapter_config.json")
+        with open(cfg_path) as f:
+            adapter_cfg = json.load(f)
+        base_model = adapter_cfg["base_model_name_or_path"]
+        is_lora = True
+        print(f"[Transformers] LoRA adapter detected. Base model: {base_model}")
+    except Exception:
+        base_model = model_path
+        is_lora = False
+
+    print(f"[Transformers] Loading model: {base_model} ...")
+    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        dtype=torch.float16,
+        base_model,
+        torch_dtype=torch.float16,
         device_map="auto",
         trust_remote_code=True,
     )
+
+    if is_lora:
+        from peft import PeftModel
+        print(f"[Transformers] Applying LoRA adapter: {model_path} ...")
+        model = PeftModel.from_pretrained(model, model_path)
+        model = model.merge_and_unload()
+        print(f"[Transformers] LoRA merged into base model.")
+
     model.eval()
     _HF_CACHE[model_path] = (tokenizer, model)
     print(f"[Transformers] Model loaded on {next(model.parameters()).device}")
