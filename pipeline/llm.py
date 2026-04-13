@@ -12,7 +12,13 @@ def _load_llama(model_path: str):
     if model_path in _LLAMA_CACHE:
         return _LLAMA_CACHE[model_path]
 
-    from llama_cpp import Llama
+    try:
+        from llama_cpp import Llama
+    except ImportError:
+        raise ImportError(
+            "llama-cpp-python is not installed. "
+            "Install it with: pip install llama-cpp-python --user"
+        )
     print(f"[llama-cpp] Loading GGUF model: {model_path} ...")
     model = Llama(
         model_path=model_path,
@@ -164,14 +170,14 @@ def transformers_chat(
             add_generation_prompt=True,
             tokenize=False,
         )
-        inputs = tokenizer(text, return_tensors="pt").to(model.device)
+        inputs = tokenizer(text, return_tensors="pt").to(next(model.parameters()).device)
     else:
         # Fallback for models without a chat template
         prompt = (f"System: {system}\n\n" if system else "")
         for msg in messages:
             prompt += f"{msg['role'].capitalize()}: {msg['content']}\n"
         prompt += "Assistant:"
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        inputs = tokenizer(prompt, return_tensors="pt").to(next(model.parameters()).device)
 
     input_len = inputs["input_ids"].shape[-1]
 

@@ -37,13 +37,19 @@ with st.sidebar:
     st.divider()
 
     if use_transformers:
-        import torch
-        gpu_available = torch.cuda.is_available()
-        if gpu_available:
-            gpu_name = torch.cuda.get_device_name(0)
-            st.success(f"GPU detected: {gpu_name}")
-        else:
-            st.warning("No CUDA GPU detected — model will run on CPU (slow).")
+        try:
+            import torch
+            gpu_available = torch.cuda.is_available()
+            if gpu_available:
+                try:
+                    gpu_name = torch.cuda.get_device_name(0)
+                    st.success(f"GPU detected: {gpu_name}")
+                except Exception:
+                    st.success("GPU detected (CUDA available)")
+            else:
+                st.warning("No CUDA GPU detected — model will run on CPU (slow).")
+        except ImportError:
+            st.warning("PyTorch not installed. Install with: pip install torch")
 
         ollama_model = st.text_input(
             "Model path or HuggingFace ID",
