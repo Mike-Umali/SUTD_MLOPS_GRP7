@@ -90,22 +90,21 @@ def _load_hf_model(model_path: str):
 
     print(f"[Transformers] Loading model: {base_model} ...")
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
-    # Load in fp16 — skip bitsandbytes quantization (not supported on Blackwell/sm_120)
+    # Load in fp16 — torch_dtype=float16 overrides any quantization_config in the model config
+    # (bitsandbytes is not supported on Blackwell/sm_120)
     model = AutoModelForCausalLM.from_pretrained(
         base_model,
         torch_dtype=torch.float16,
         device_map="auto",
         trust_remote_code=True,
-        load_in_4bit=False,
-        load_in_8bit=False,
     )
 
     if is_lora:
         from peft import PeftModel
         print(f"[Transformers] Applying LoRA adapter: {model_path} ...")
         model = PeftModel.from_pretrained(model, model_path, is_trainable=False)
-        # Skip merge_and_unload() — bitsandbytes dequantization not supported on sm_120
-        print(f"[Transformers] LoRA adapter applied (fp16, no merge).")
+        model = model.merge_and_unload()
+        print(f"[Transformers] LoRA merged into base model (fp16).")
 
     model.eval()
     _HF_CACHE[model_path] = (tokenizer, model)
