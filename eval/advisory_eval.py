@@ -1,8 +1,11 @@
 """
-Advisory evaluation — requires Anthropic API.
+Advisory evaluation.
 
 Runs the full pipeline on a 10-query subset and uses Claude as judge
 to score each advisory on 5 dimensions (each 1-5).
+
+The pipeline backend (generation) is configurable: claude, ollama, or transformers.
+The judge always uses Claude (Anthropic API) for consistent scoring.
 
 Dimensions:
   1. legal_accuracy    — correct statutes, sections, case law
@@ -144,6 +147,8 @@ def evaluate_advisory(
     client: anthropic.Anthropic,
     test_cases: List[TestCase] = None,
     subset_ids: List[str] = None,
+    backend: str = "claude",
+    model: str = "qwen2.5:7b",
 ) -> List[AdvisoryResult]:
     if test_cases is None:
         test_cases = TEST_CASES
@@ -154,13 +159,18 @@ def evaluate_advisory(
     results = []
 
     for i, tc in enumerate(subset, 1):
-        print(f"  [{i}/{len(subset)}] {tc.id}: running pipeline...")
+        print(f"  [{i}/{len(subset)}] {tc.id}: running pipeline ({backend})...")
         try:
-            manager_output = run_manager_agent(tc.query, client)
+            pipeline_client = client if backend == "claude" else None
+            manager_output = run_manager_agent(
+                tc.query, pipeline_client, backend=backend, ollama_model=model
+            )
             qa_output = run_qa_agent(
                 user_query=tc.query,
                 expert_results=manager_output["expert_results"],
-                client=client,
+                client=pipeline_client,
+                backend=backend,
+                ollama_model=model,
             )
 
             advisory = qa_output["advisory"]

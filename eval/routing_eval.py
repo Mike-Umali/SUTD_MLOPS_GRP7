@@ -1,8 +1,10 @@
 """
-Routing evaluation — requires Anthropic API.
+Routing evaluation.
 
 Measures how accurately the Manager Agent selects the correct expert domains.
 Metrics: precision, recall, F1 (set-based per query), macro-averaged overall.
+
+Supports Claude (default), Ollama, and Transformers backends.
 """
 
 from __future__ import annotations
@@ -10,11 +12,10 @@ import os
 import sys
 import statistics
 from dataclasses import dataclass
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-import anthropic
 from pipeline.agents.manager import run_manager_agent
 from eval.test_set import TEST_CASES, TestCase
 
@@ -56,8 +57,10 @@ def _prf(expected: List[str], actual: List[str]) -> Tuple[float, float, float]:
 
 
 def evaluate_routing(
-    client: anthropic.Anthropic,
+    client=None,
     test_cases: List[TestCase] = None,
+    backend: str = "claude",
+    model: str = "qwen2.5:7b",
 ) -> List[RoutingResult]:
     if test_cases is None:
         test_cases = TEST_CASES
@@ -66,7 +69,9 @@ def evaluate_routing(
     for i, tc in enumerate(test_cases, 1):
         print(f"  [{i}/{len(test_cases)}] {tc.id}: {tc.query[:60]}...")
         try:
-            manager_output = run_manager_agent(tc.query, client)
+            manager_output = run_manager_agent(
+                tc.query, client, backend=backend, ollama_model=model
+            )
             actual_names = manager_output["experts_consulted"]
             actual_domains = [
                 EXPERT_NAME_TO_DOMAIN.get(name, name) for name in actual_names
@@ -122,8 +127,11 @@ def compute_routing_report(results: List[RoutingResult]) -> dict:
 
 
 def print_routing_report(report: dict) -> None:
-    print("\nROUTING EVALUATION  (requires Anthropic API)")
+    print("\nROUTING EVALUATION")
     print("-" * 60)
+    if "error" in report:
+        print(f"  ERROR: {report['error']}")
+        return
     print(f"  Test cases evaluated : {report['n_evaluated']}")
     print(f"  Macro Precision      : {report['macro_precision']:.3f}")
     print(f"  Macro Recall         : {report['macro_recall']:.3f}")

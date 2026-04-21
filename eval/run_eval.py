@@ -40,28 +40,32 @@ def run_retrieval():
     return report
 
 
-def run_routing(client):
+def run_routing(client, backend="claude", model="qwen2.5:7b"):
     from eval.routing_eval import evaluate_routing, compute_routing_report, print_routing_report
-    print("Running routing evaluation (this will make API calls)...")
-    results = evaluate_routing(client, TEST_CASES)
+    label = f"backend={backend}" + (f", model={model}" if backend != "claude" else "")
+    print(f"Running routing evaluation ({label})...")
+    results = evaluate_routing(client, TEST_CASES, backend=backend, model=model)
     report = compute_routing_report(results)
     print_routing_report(report)
     return report
 
 
-def run_advisory(client):
+def run_advisory(client, backend="claude", model="qwen2.5:7b"):
     from eval.advisory_eval import evaluate_advisory, compute_advisory_report, print_advisory_report
-    print("Running advisory evaluation (full pipeline + judge, ~10 queries)...")
-    results = evaluate_advisory(client)
+    label = f"backend={backend}" + (f", model={model}" if backend != "claude" else "")
+    print(f"Running advisory evaluation (pipeline: {label}, judge: claude, ~10 queries)...")
+    results = evaluate_advisory(client, backend=backend, model=model)
     report = compute_advisory_report(results)
     print_advisory_report(report)
     return report
 
 
-def print_header():
+def print_header(backend="claude", model=None):
     print("=" * 60)
     print("  SINGAPORE CRIMINAL LAW RAG — EVALUATION REPORT")
     print(f"  Run date: {date.today()}")
+    label = backend if backend == "claude" else f"{backend} / {model}"
+    print(f"  Pipeline backend: {label}")
     print("=" * 60)
 
 
@@ -86,21 +90,33 @@ def print_summary(reports: dict):
 
 def main():
     parser = argparse.ArgumentParser(description="Singapore Criminal Law RAG — Evaluation Runner")
-    parser.add_argument("--retrieval", action="store_true", help="Run retrieval evaluation (no API)")
-    parser.add_argument("--routing",   action="store_true", help="Run routing evaluation (requires API)")
-    parser.add_argument("--advisory",  action="store_true", help="Run advisory evaluation (requires API)")
+    parser.add_argument("--retrieval", action="store_true", help="Run retrieval evaluation (no API needed)")
+    parser.add_argument("--routing",   action="store_true", help="Run routing evaluation")
+    parser.add_argument("--advisory",  action="store_true", help="Run advisory evaluation (judge always uses Claude)")
     parser.add_argument("--all",       action="store_true", help="Run all evaluations")
+    parser.add_argument(
+        "--backend", default="claude",
+        choices=["claude", "ollama", "transformers"],
+        help="Pipeline backend for generation (default: claude). Judge always uses Claude.",
+    )
+    parser.add_argument(
+        "--model", default="qwen2.5:7b",
+        help="Model name/path for ollama or transformers backend (e.g. qwen2.5:7b, MikeUmali/sg-law-qwen2.5-3b-lora)",
+    )
     args = parser.parse_args()
 
     if not any([args.retrieval, args.routing, args.advisory, args.all]):
         parser.print_help()
         sys.exit(0)
 
-    print_header()
+    print_header(backend=args.backend, model=args.model)
     reports = {}
     client = None
 
-    needs_api = args.routing or args.advisory or args.all
+    # Anthropic client needed when: advisory (judge always uses Claude) OR claude pipeline backend
+    needs_api = (args.advisory or args.all) or (
+        (args.routing or args.all) and args.backend == "claude"
+    )
     if needs_api:
         client = _get_client()
 
@@ -108,10 +124,10 @@ def main():
         reports["retrieval"] = run_retrieval()
 
     if args.routing or args.all:
-        reports["routing"] = run_routing(client)
+        reports["routing"] = run_routing(client, backend=args.backend, model=args.model)
 
     if args.advisory or args.all:
-        reports["advisory"] = run_advisory(client)
+        reports["advisory"] = run_advisory(client, backend=args.backend, model=args.model)
 
     if len(reports) > 1:
         print_summary(reports)
