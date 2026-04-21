@@ -41,13 +41,14 @@ Be precise, authoritative, and grounded in Singapore law. Do not speculate beyon
 
 
 def _fix_spacing(text: str) -> str:
-    """Fix words running together — insert space before capitals mid-word."""
     import re
-    # Insert space between a lowercase letter and an uppercase letter (e.g. "myclient" → "my client")
+    # camelCase: "myClient" → "my Client"
     text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
-    # Insert space before '[' if preceded by a letter (e.g. "case[2024]" → "case [2024]")
+    # ALL_CAPS run-together: "THISISALLCAPS" → split on 3+ consecutive caps followed by more caps+lower
+    text = re.sub(r'([A-Z]{2,})([A-Z][a-z])', r'\1 \2', text)
+    # space before '[': "case[2024]" → "case [2024]"
     text = re.sub(r'([a-zA-Z])(\[)', r'\1 \2', text)
-    # Fix multiple spaces
+    # fix multiple spaces
     text = re.sub(r'  +', ' ', text)
     return text
 
@@ -91,43 +92,32 @@ Produce the final legal advisory note."""
                 model=ollama_model, system=sys, messages=msgs, max_tokens=max_tok
             )
 
-        ollama_system = """You are a Singapore criminal law advisor. Write a structured legal advisory note. Be concise and factual. Do not repeat sentences.
+        ollama_system = """You are a Singapore criminal law advisor. Produce a structured legal advisory using ONLY the expert findings provided. Be precise and cite only cases mentioned in the findings.
 
-Use this exact format and stop after the cases table:
+Your response must contain exactly these six sections in this order:
 
 **CASE CLASSIFICATION**
-[One sentence: offence name — statute and section]
+State the offence name, statute, and section number in one sentence.
 
-**LEGAL ISSUES**
-1. Whether [issue one]
-2. Whether [issue two]
-3. Whether [issue three]
+**LEGAL ISSUES IDENTIFIED**
+List 3 numbered legal questions raised by this query, each starting with "Whether".
 
 **APPLICABLE LAW**
-- [Statute s X]: [what it provides]
-- [Case citation]: [legal principle]
+List the key statutes and cases as bullet points. Format: "- [statute or citation]: [one-line principle]"
 
 **ANALYSIS**
-[Paragraph 1: classify the offence and applicable threshold]
-[Paragraph 2: key sentencing precedents from the cases]
-[Paragraph 3: defence options and mitigating factors]
+Write 3 paragraphs: (1) the offence and applicable threshold, (2) sentencing precedents from the retrieved cases, (3) available defences and mitigating factors.
 
 **RECOMMENDED NEXT STEPS**
-1. [Most urgent step]
-2. [Second step]
-3. [Third step]
+List 4 numbered concrete steps for defence counsel, in order of priority.
 
 **CASES REFERENCED**
-| Citation | Relevance |
-|----------|-----------|
-| [citation] | [one-line relevance] |
-
-Rules: every section appears exactly once. Write formally. Do not repeat sentences. Stop after the table."""
+List each case citation on its own line."""
 
         advisory = local_chat_fn(
             ollama_system,
             [{"role": "user", "content": user_message}],
-            1200,
+            2500,
         )
         advisory = _fix_spacing(advisory)
     else:

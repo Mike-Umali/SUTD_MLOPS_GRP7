@@ -170,7 +170,7 @@ def transformers_chat(
     model_path: str,
     system: str,
     messages: list,
-    max_new_tokens: int = 1024,
+    max_new_tokens: int = 2500,
 ) -> str:
     """Run inference on a local HuggingFace model using CUDA."""
     import torch
