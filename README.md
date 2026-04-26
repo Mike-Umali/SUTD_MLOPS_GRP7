@@ -915,11 +915,9 @@ Three distinct techniques were implemented and evaluated across all three evalua
 
 5. **Final architecture decision** — Claude pipeline selected for production advisory generation; local fine-tuned model retained as the offline/cluster fallback with improved prompting and token limits applied.
 
----
 
 ## Demo Video
 https://www.youtube.com/watch?v=rY_FEKoa0Hs
----
 
 
 ## File Structure
